@@ -374,6 +374,11 @@ DpiScaler::DpiScaler(const DpiScaler& dpi)
     m_logPixels = dpi.m_logPixels;
 }
 
+DpiScaler::DpiScaler(DpiScaler&& dpi)
+{
+    m_logPixels = dpi.m_logPixels;
+}
+
 bool DpiScaler::IsDpiEqual(UINT dpi) const
 {
     assert(dpi);
@@ -398,6 +403,12 @@ DpiScaler& DpiScaler::operator=(const DpiScaler& dpi)
     return *this;
 }
 
+DpiScaler& DpiScaler::operator=(DpiScaler&& dpi)
+{
+    m_logPixels = dpi.m_logPixels;
+    return *this;
+}
+
 void DpiScaler::OnDpiChanged(const DpiScaler& dpi)
 {
     m_logPixels = dpi.m_logPixels;
@@ -406,6 +417,11 @@ void DpiScaler::OnDpiChanged(const DpiScaler& dpi)
 int DpiScaler::Scale(int n) const
 {
     return HIDPIMulDiv(n, m_logPixels, 96);
+}
+
+float DpiScaler::ScaleF(float n) const
+{
+    return n * float(m_logPixels) / 96.0f;
 }
 
 int DpiScaler::ScaleTo(int n, DWORD dpi) const

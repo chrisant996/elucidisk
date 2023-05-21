@@ -52,6 +52,7 @@ public:
     explicit    DpiScaler(WORD dpi);
     explicit    DpiScaler(WPARAM wParam);
     explicit    DpiScaler(const DpiScaler& dpi);
+    explicit    DpiScaler(DpiScaler&& dpi);
 
     bool        IsDpiEqual(UINT dpi) const;
     bool        IsDpiEqual(const DpiScaler& dpi) const;
@@ -60,9 +61,11 @@ public:
 
     DpiScaler&  operator=(WORD dpi);
     DpiScaler&  operator=(const DpiScaler& dpi);
+    DpiScaler&  operator=(DpiScaler&& dpi);
     void        OnDpiChanged(const DpiScaler& dpi);
 
     int         Scale(int n) const;
+    float       ScaleF(float n) const;
 
     int         ScaleTo(int n, DWORD dpi) const;
     int         ScaleTo(int n, const DpiScaler& dpi) const;

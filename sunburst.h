@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include "data.h"
 #include <d3d11.h>
 #include <d2d1.h>
 #include <d2d1_1.h>
+
+class DirNode;
 
 HRESULT InitializeD2D();
 
@@ -23,11 +26,48 @@ public:
     ID2D1RenderTarget*      Target() const { return m_pTarget; }
 
     ID2D1SolidColorBrush*   LineBrush() const { return m_pLineBrush; }
+    ID2D1SolidColorBrush*   FillBrush() const { return m_pFillBrush; }
 
 private:
     HWND                    m_hwnd = 0;
     ID2D1Factory*           m_pFactory = nullptr;
     ID2D1HwndRenderTarget*  m_pTarget = nullptr;
     ID2D1SolidColorBrush*   m_pLineBrush = nullptr;
+    ID2D1SolidColorBrush*   m_pFillBrush = nullptr;
+};
+
+class Sunburst
+{
+    struct Arc
+    {
+        float               m_start;
+        float               m_end;
+        std::shared_ptr<Node> m_node;
+    };
+
+public:
+                            Sunburst();
+                            ~Sunburst();
+
+    void                    Init(const Sunburst& other);
+    void                    BuildRings(const std::vector<std::shared_ptr<DirNode>>& roots);
+    void                    RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& rect, const std::shared_ptr<Node>& highlight);
+    std::shared_ptr<Node>   HitTest(POINT pt);
+    void                    OnDpiChanged(const DpiScaler& dpi);
+
+protected:
+    static D2D1_COLOR_F     MakeColor(const Arc& arc, size_t depth, bool highlight);
+    static void             MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span);
+    std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring);
+    bool                    IsRoot(const std::shared_ptr<Node>& node);
+
+private:
+    DpiScaler               m_dpi;
+    FLOAT                   m_center_radius = 0;
+    D2D1_RECT_F             m_bounds;
+    D2D1_POINT_2F           m_center;
+
+    std::vector<std::shared_ptr<DirNode>> m_roots;
+    std::vector<std::vector<Arc>> m_rings;
 };
 
