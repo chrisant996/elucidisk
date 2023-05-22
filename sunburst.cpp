@@ -11,7 +11,7 @@ static ID2D1Factory* s_pD2DFactory = nullptr;
 
 constexpr FLOAT M_PI = 3.14159265358979323846f;
 constexpr FLOAT c_minAngle = 1.0f;
-constexpr FLOAT c_centerRadius = 50.0f;
+constexpr int c_centerRadius = 50;
 
 HRESULT InitializeD2D()
 {
@@ -287,6 +287,68 @@ void DirectHwndRenderTarget::ReleaseDeviceResources()
 }
 
 //----------------------------------------------------------------------------
+// SunburstMetrics.
+
+struct SunburstMetrics
+{
+    SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds, size_t max_depth)
+    : stroke(FLOAT(dpi.Scale(1)))
+    , margin(FLOAT(dpi.Scale(4)))
+    , indicator_thickness(FLOAT(dpi.Scale(3)))
+    , center_radius(FLOAT(dpi.Scale(c_centerRadius)))
+    , boundary_radius(std::min<FLOAT>(bounds.right - bounds.left, bounds.bottom - bounds.top) / 2 - margin)
+    , max_radius(boundary_radius - (margin + indicator_thickness + margin))
+    , range_radius(max_radius - center_radius)
+    {
+        static constexpr float c_rings[] =
+        {
+            0.20f,
+            0.17f,
+            0.14f,
+            0.12f,
+            0.10f,
+            0.08f,
+            0.065f,
+            0.05f,
+            0.04f,
+            0.035f,
+        };
+        static_assert(_countof(c_rings) == _countof(thicknesses), "array size mismatch");
+        static_assert(c_rings[0] + c_rings[1] + c_rings[2] + c_rings[3] +
+                      c_rings[4] + c_rings[5] + c_rings[6] + c_rings[7] +
+                      c_rings[8] + c_rings[9] > 0.999f, "must total 100%");
+        static_assert(c_rings[0] + c_rings[1] + c_rings[2] + c_rings[3] +
+                      c_rings[4] + c_rings[5] + c_rings[6] + c_rings[7] +
+                      c_rings[8] + c_rings[9] < 1.001f, "must total 100%");
+        FLOAT scale = 0;
+        if (max_depth > _countof(c_rings))
+            max_depth = _countof(c_rings);
+        for (size_t ii = 0; ii < std::max<size_t>(max_depth, 5); ++ii)
+            scale += c_rings[ii];
+        for (size_t ii = 0; ii < max_depth; ++ii)
+            thicknesses[ii] = c_rings[ii] * range_radius / scale;
+        for (size_t ii = max_depth; ii < _countof(c_rings); ++ii)
+            thicknesses[ii] = 0.0f;
+    }
+
+    FLOAT get_thickness(size_t depth)
+    {
+        return (depth < _countof(thicknesses)) ? thicknesses[depth] : 0.0f;
+    }
+
+    const FLOAT stroke;
+    const FLOAT margin;
+    const FLOAT indicator_thickness;
+    const FLOAT center_radius;
+    const FLOAT boundary_radius;
+    const FLOAT max_radius;
+    const FLOAT range_radius;
+
+private:
+    FLOAT thicknesses[10];
+};
+
+//----------------------------------------------------------------------------
 // Sunburst.
 
 Sunburst::Sunburst()
@@ -300,7 +362,6 @@ Sunburst::~Sunburst()
 void Sunburst::Init(const Sunburst& other)
 {
     m_dpi = other.m_dpi;
-    m_center_radius = other.m_center_radius;
     m_bounds = other.m_bounds;
     m_center = other.m_center;
 }
@@ -482,25 +543,10 @@ static D2D1_POINT_2F MakePoint(const D2D1_POINT_2F& center, FLOAT radius, FLOAT 
     return point;
 }
 
-static FLOAT get_thickness(size_t depth, const DpiScaler& dpi)
-{
-    FLOAT thickness = 0;
-    if (depth < 10)
-    {
-// TODO: Also proportional to max radius.
-        const int n = 10 - int(depth);
-        const int two = (n > 5) ? (n - 5) : 0;
-        const int three = ((n > 5) ? 5 : n) + 1;
-        thickness += FLOAT(two * dpi.Scale(2));
-        thickness += FLOAT(three * dpi.Scale(3));
-    }
-    return thickness;
-}
-
 D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
 {
     if (arc.m_node->AsFreeSpace())
-        return D2D1::ColorF(highlight ? D2D1::ColorF::LightSteelBlue : D2D1::ColorF::White);
+        return D2D1::ColorF(highlight ? D2D1::ColorF::LightSteelBlue : D2D1::ColorF::WhiteSmoke);
 
     const bool file = !!arc.m_node->AsFile();
     if (file)
@@ -541,10 +587,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
         rect, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.35f);
     pTarget->CreateLayer(&pFileLayer);
 
-    const FLOAT stroke = FLOAT(m_dpi.Scale(1));
-    const FLOAT margin = FLOAT(m_dpi.Scale(4));
-    const FLOAT indicator_thickness = FLOAT(m_dpi.Scale(3));
-    const FLOAT boundary_radius = std::min<FLOAT>(rect.right - rect.left, rect.bottom - rect.top) / 2 - margin;
+    SunburstMetrics mx(m_dpi, m_bounds, m_rings.size());
 
     ID2D1SolidColorBrush* pLineBrush = target.LineBrush();
     ID2D1SolidColorBrush* pFillBrush = target.FillBrush();
@@ -554,11 +597,11 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
     {
         D2D1_ELLIPSE ellipse;
         ellipse.point = m_center;
-        ellipse.radiusX = boundary_radius;
-        ellipse.radiusY = boundary_radius;
+        ellipse.radiusX = mx.boundary_radius;
+        ellipse.radiusY = mx.boundary_radius;
 
         pFillBrush->SetColor(D2D1::ColorF(D2D1::ColorF::LightGray));
-        pTarget->DrawEllipse(ellipse, pFillBrush, stroke);
+        pTarget->DrawEllipse(ellipse, pFillBrush, mx.stroke);
     }
 
     // Center circle.
@@ -566,9 +609,10 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
     {
         D2D1_ELLIPSE ellipse;
         ellipse.point = m_center;
-        ellipse.radiusX = m_center_radius;
-        ellipse.radiusY = m_center_radius;
+        ellipse.radiusX = mx.center_radius;
+        ellipse.radiusY = mx.center_radius;
 
+// TODO: Also draw separator lines between roots.
         ID2D1EllipseGeometry* pGeometry = nullptr;
         if (SUCCEEDED(target.Factory()->CreateEllipseGeometry(ellipse, &pGeometry)))
         {
@@ -577,7 +621,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
             else
                 pFillBrush->SetColor(D2D1::ColorF(D2D1::ColorF::LightGray));
             pTarget->FillGeometry(pGeometry, pFillBrush);
-            pTarget->DrawGeometry(pGeometry, pLineBrush, stroke);
+            pTarget->DrawGeometry(pGeometry, pLineBrush, mx.stroke);
 
             for (const auto root : m_roots)
             {
@@ -596,19 +640,24 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
 
     // Rings.
 
-    FLOAT inner_radius = m_center_radius;
+    FLOAT inner_radius = mx.center_radius;
     for (size_t depth = 0; depth < m_rings.size(); ++depth)
     {
-        const FLOAT thickness = get_thickness(depth, m_dpi);
+        const FLOAT thickness = mx.get_thickness(depth);
         if (thickness <= 0.0f)
             break;
 
         const FLOAT outer_radius = inner_radius + thickness;
-        if (outer_radius + margin + indicator_thickness + margin > boundary_radius)
+        if (outer_radius > mx.max_radius)
             break;
 
         for (const auto arc : m_rings[depth])
         {
+            const D2D1_POINT_2F inner_start_point = MakePoint(m_center, inner_radius, arc.m_start);
+            const D2D1_POINT_2F inner_end_point = MakePoint(m_center, inner_radius, arc.m_end);
+// TODO: When inner_start_point == inner_end_point, D2D gets confused where to
+// draw the arc, since it's a full circle.
+
             ID2D1PathGeometry* pGeometry = nullptr;
             if (SUCCEEDED(target.Factory()->CreatePathGeometry(&pGeometry)))
             {
@@ -616,7 +665,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
                 if (SUCCEEDED(pGeometry->Open(&pSink)))
                 {
                     D2D1_ARC_SEGMENT inner;
-                    inner.point = MakePoint(m_center, inner_radius, arc.m_end);
+                    inner.point = inner_end_point;
                     inner.size = D2D1::SizeF(inner_radius, inner_radius);
                     inner.rotationAngle = arc.m_start;
                     inner.sweepDirection = D2D1_SWEEP_DIRECTION_CLOCKWISE;
@@ -630,7 +679,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
                     outer.arcSize = (arc.m_end - arc.m_start > 180) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
 
                     pSink->SetFillMode(D2D1_FILL_MODE_WINDING);
-                    pSink->BeginFigure(MakePoint(m_center, inner_radius, arc.m_start), D2D1_FIGURE_BEGIN_FILLED);
+                    pSink->BeginFigure(inner_start_point, D2D1_FIGURE_BEGIN_FILLED);
                     pSink->AddArc(inner);
                     pSink->AddLine(MakePoint(m_center, outer_radius, arc.m_end));
                     pSink->AddArc(outer);
@@ -648,7 +697,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
                         pTarget->PushLayer(fileLayerParams, pFileLayer);
 
                     pTarget->FillGeometry(pGeometry, pFillBrush);
-                    pTarget->DrawGeometry(pGeometry, pLineBrush, stroke);
+                    pTarget->DrawGeometry(pGeometry, pLineBrush, mx.stroke);
 
                     if (isHighlight)
                     {
@@ -675,7 +724,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
 
     if (pHighlight)
     {
-        pTarget->DrawGeometry(pHighlight, pLineBrush, 2.0f);
+        pTarget->DrawGeometry(pHighlight, pLineBrush, mx.stroke * 2.0f);
         ReleaseI(pHighlight);
     }
 }
@@ -686,19 +735,23 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
     const FLOAT ydelta = (pt.y - m_center.y);
     FLOAT radius = sqrt((xdelta * xdelta) + (ydelta * ydelta));
 
-    const bool use_parent = (radius <= m_center_radius);
+    SunburstMetrics mx(m_dpi, m_bounds, m_rings.size());
+
+    const bool use_parent = (radius <= mx.center_radius);
     if (use_parent)
     {
         if (m_roots.size() == 1)
             return m_roots[0];
-        radius = m_center_radius + (get_thickness(0, m_dpi) / 2);
+// TODO: Need the actual start/end arcs for each root, otherwise there may be
+// dead spots with no arc.
+        radius = mx.center_radius + (mx.get_thickness(0) / 2);
     }
 
-    radius -= m_center_radius;
+    radius -= mx.center_radius;
 
     for (size_t depth = 0; depth < m_rings.size(); ++depth)
     {
-        radius -= get_thickness(depth, m_dpi);
+        radius -= mx.get_thickness(depth);
         if (radius < 0.0f)
         {
             const FLOAT angle = FindAngle(m_center, FLOAT(pt.x), FLOAT(pt.y));
@@ -721,8 +774,6 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
 void Sunburst::OnDpiChanged(const DpiScaler& dpi)
 {
     m_dpi.OnDpiChanged(dpi);
-
-    m_center_radius = m_dpi.ScaleF(c_centerRadius);
 
     m_rings.clear();
 }

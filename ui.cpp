@@ -147,7 +147,7 @@ public:
                             MainWindow();
 
     HWND                    Create(HINSTANCE hinst);
-    void                    Scan(int argc, const WCHAR** argv);
+    void                    Scan(int argc, const WCHAR** argv, bool rescan);
 
 protected:
                             ~MainWindow() {}
@@ -161,6 +161,7 @@ protected:
 
     void                    DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node);
 
+    void                    Expand(const std::shared_ptr<Node>& node);
     void                    Rescan();
 
     static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -172,6 +173,7 @@ private:
 
     std::recursive_mutex    m_ui_mutex; // Synchronize m_scanner vs m_sunburst.
 
+    std::vector<std::shared_ptr<DirNode>> m_original_roots;
     std::vector<std::shared_ptr<DirNode>> m_roots;
     ScannerThread           m_scanner;
 
@@ -237,20 +239,64 @@ HWND MainWindow::Create(HINSTANCE hinst)
     return hwnd;
 }
 
-void MainWindow::Scan(int argc, const WCHAR** argv)
+void MainWindow::Scan(int argc, const WCHAR** argv, bool rescan)
 {
     m_roots = m_scanner.Start(argc, argv);
+    if (!rescan)
+        m_original_roots = m_roots;
     SetTimer(m_hwnd, TIMER_PROGRESS, INTERVAL_PROGRESS, nullptr);
+    InvalidateRect(m_hwnd, nullptr, false);
+}
+
+void MainWindow::Expand(const std::shared_ptr<Node>& node)
+{
+    if (!node || node->AsFile())
+        return;
+
+    bool up = false;
+    for (const auto root : m_roots)
+    {
+        if (root == node)
+            up = true;
+    }
+
+    if (up && !node->GetParent())
+        return;
+
+    std::shared_ptr<DirNode> dir;
+    if (up)
+        dir = node->GetParent();
+    else if (node->AsDir())
+        dir = std::static_pointer_cast<DirNode>(const_cast<DirNode*>(node->AsDir())->shared_from_this());
+
+    if (!dir)
+        return;
+
+    if (up && !dir->GetParent())
+    {
+        m_roots = m_original_roots;
+    }
+    else
+    {
+        m_roots.clear();
+        m_roots.emplace_back(dir);
+    }
+
     InvalidateRect(m_hwnd, nullptr, false);
 }
 
 void MainWindow::Rescan()
 {
+// TODO: Rescan current root(s) instead, clearing them first.  That gets
+// tricky if a scan is already in progress.  Maybe convert the recursive Scan
+// into a queue of DirNode's to be scanned, and insert the current roots at
+// the head of the queue?  And what if any of those DirNode's are already in
+// progress being scanned, or haven't been scanned yet?
     std::vector<const WCHAR*> paths;
-    for (const auto root : m_roots)
+    for (const auto root : m_original_roots)
         paths.emplace_back(root->GetName());
 
-    Scan(int(paths.size()), paths.data());
+    Scan(int(paths.size()), paths.data(), true/*rescan*/);
 }
 
 void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node)
@@ -443,6 +489,17 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         }
         break;
 
+    case WM_LBUTTONDOWN:
+        {
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+
+            std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
+            Expand(node);
+        }
+        break;
+
     case WM_GETMINMAXINFO:
         {
             MINMAXINFO* const p = reinterpret_cast<MINMAXINFO*>(lParam);
@@ -560,7 +617,7 @@ HWND MakeUi(HINSTANCE hinst, int argc, const WCHAR** argv)
     if (hwnd)
     {
         SetFocus(hwnd);
-        p->Scan(argc, argv);
+        p->Scan(argc, argv, false/*rescan*/);
     }
 
     return hwnd;

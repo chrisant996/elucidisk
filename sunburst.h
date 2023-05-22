@@ -63,7 +63,6 @@ protected:
 
 private:
     DpiScaler               m_dpi;
-    FLOAT                   m_center_radius = 0;
     D2D1_RECT_F             m_bounds;
     D2D1_POINT_2F           m_center;
 
