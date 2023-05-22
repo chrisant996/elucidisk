@@ -379,6 +379,9 @@ void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node
     assert(arc.m_end - arc.m_start <= span);
 #endif
 
+// TODO: Base it on a percentage of total size when multiple roots are present?
+// TODO: Unclear what to do when only there's only one root and it isn't a drive...
+// NOTE: The problem is the async scan can cause the max depth to jitter, which rescales the whole chart.
     if (arc.m_end - arc.m_start >= c_minAngle)
     {
         arc.m_node = node;
@@ -475,6 +478,7 @@ std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_rin
     for (const auto _parent : parent_ring)
     {
         const DirNode* parent = _parent.m_node->AsDir();
+// TODO: How to ignore nodes that have been marked "hidden" in the UI?
         if (parent)
         {
             double sweep = 0;
