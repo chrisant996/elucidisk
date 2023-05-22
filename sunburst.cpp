@@ -18,7 +18,6 @@ HRESULT InitializeD2D()
     CoInitialize(0);
 
     return D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED, __uuidof(ID2D1Factory), 0, reinterpret_cast<void**>(&s_pD2DFactory));
-// TODO: CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&s_pWICFactory));
 }
 
 static bool GetD2DFactory(ID2D1Factory** ppFactory)
@@ -394,11 +393,12 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
     const std::vector<std::shared_ptr<DirNode>> roots = _roots;
 
     std::vector<double> totals;
-    std::vector<float> starts;
     std::vector<float> spans;
 
     m_roots = roots;
     m_rings.clear();
+    m_start_angles.clear();
+    m_free_angles.clear();
 
     {
         double grand_total = 0;
@@ -418,8 +418,15 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             const float start = float(sweep * 360 / grand_total);
             sweep += totals[ii];
             const float end = float(sweep * 360 / grand_total);
-            starts.emplace_back(start);
+            m_start_angles.emplace_back(start);
             spans.emplace_back(end - start);
+
+            std::shared_ptr<FreeSpaceNode> free = m_roots[ii]->GetFreeSpace();
+            if (free)
+            {
+                const float angle = float((sweep - free->GetFreeSize()) * 360 / grand_total);
+                m_free_angles.emplace_back(angle);
+            }
         }
     }
 
@@ -435,7 +442,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
         std::shared_ptr<FreeSpaceNode> free = root->GetFreeSpace();
 
         const double total = totals[ii];
-        const float start = starts[ii];
+        const float start = m_start_angles[ii];
         const float span = spans[ii];
         const double scale = free ? double(free->GetTotalSize() - free->GetFreeSize()) / root->GetSize() : 1.0f;
 // TODO: The proportions are wrong while painting during async scan.
@@ -449,7 +456,6 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             MakeArc(arcs, std::static_pointer_cast<Node>(free), free->GetFreeSize(), sweep, total, start, span);
     }
 
-// TODO: Smart depth limiting.
     while (m_rings.size() <= 10)
     {
         std::vector<Arc> arcs = NextRing(m_rings.back());
@@ -478,8 +484,7 @@ std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_rin
     for (const auto _parent : parent_ring)
     {
         const DirNode* parent = _parent.m_node->AsDir();
-// TODO: How to ignore nodes that have been marked "hidden" in the UI?
-        if (parent)
+        if (parent && !parent->Hidden())
         {
             double sweep = 0;
 
@@ -510,17 +515,6 @@ std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_rin
     }
 
     return arcs;
-}
-
-bool Sunburst::IsRoot(const std::shared_ptr<Node>& node)
-{
-    for (const auto root : m_roots)
-    {
-        if (node == root)
-            return true;
-    }
-
-    return false;
 }
 
 static FLOAT FindAngle(const D2D1_POINT_2F& center, FLOAT x, FLOAT y)
@@ -555,6 +549,8 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     const bool file = !!arc.m_node->AsFile();
     if (file)
         depth = 0;
+    else if (arc.m_node->AsDir() && arc.m_node->AsDir()->Hidden())
+        return D2D1::ColorF(0xB8B8B8);
 
     const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
 
@@ -575,19 +571,84 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     return color;
 }
 
+D2D1_COLOR_F Sunburst::MakeRootColor(bool highlight, bool free)
+{
+    if (highlight)
+        return D2D1::ColorF(free ? 0xD0E4FE : D2D1::ColorF::LightSteelBlue);
+    else
+        return D2D1::ColorF(free ? 0xD8D8D8 : 0xB0B0B0);
+}
+
+bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, const FLOAT start, FLOAT end, const FLOAT inner_radius, const FLOAT outer_radius, ID2D1Geometry** ppGeometry)
+{
+    // When start and end points of an arc are identical, D2D gets confused
+    // where to draw the arc, since it's a full circle.
+// TODO: If this doesn't always work, then another approach could be to recede
+// the end angle until end point != start point.
+    const bool forward = (start != end);
+    if (end <= start)
+        end += 360.0f;
+
+    const D2D1_ARC_SIZE arcSize = (end - start > 180.0f) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
+
+    D2D1_POINT_2F inner_start_point = MakePoint(m_center, inner_radius, start);
+    D2D1_POINT_2F inner_end_point = MakePoint(m_center, inner_radius, end);
+    D2D1_POINT_2F outer_start_point = MakePoint(m_center, outer_radius, start);
+    D2D1_POINT_2F outer_end_point = MakePoint(m_center, outer_radius, end);
+
+    ID2D1PathGeometry* pGeometry = nullptr;
+    if (SUCCEEDED(target.Factory()->CreatePathGeometry(&pGeometry)))
+    {
+        ID2D1GeometrySink* pSink = nullptr;
+        if (SUCCEEDED(pGeometry->Open(&pSink)))
+        {
+            pSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+            pSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_FILLED);
+
+            D2D1_ARC_SEGMENT outer;
+            outer.point = outer_end_point;
+            outer.size = D2D1::SizeF(outer_radius, outer_radius);
+            outer.rotationAngle = start;
+            outer.sweepDirection = forward ? D2D1_SWEEP_DIRECTION_CLOCKWISE : D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE;
+            outer.arcSize = arcSize;
+            pSink->AddArc(outer);
+
+            if (forward || inner_radius > 0.0f)
+                pSink->AddLine(inner_end_point);
+
+            if (inner_radius > 0.0f)
+            {
+                D2D1_ARC_SEGMENT inner;
+                inner.point = inner_start_point;
+                inner.size = D2D1::SizeF(inner_radius, inner_radius);
+                inner.rotationAngle = end;
+                inner.sweepDirection = forward ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE;
+                inner.arcSize = arcSize;
+                pSink->AddArc(inner);
+            }
+
+            pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
+            pSink->Close();
+            ReleaseI(pSink);
+        }
+    }
+
+    *ppGeometry = pGeometry;
+    return !!pGeometry;
+}
+
 void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& rect, const std::shared_ptr<Node>& highlight)
 {
     ID2D1RenderTarget* pTarget = target.Target();
     ID2D1Geometry* pHighlight = nullptr;
 
-// BUGBUG: Centering drifts as window size changes.
     m_bounds = rect;
     m_center = D2D1::Point2F((rect.left + rect.right) / 2.0f,
                              (rect.top + rect.bottom) / 2.0f);
 
     ID2D1Layer* pFileLayer = nullptr;
     D2D1_LAYER_PARAMETERS fileLayerParams = D2D1::LayerParameters(
-// TODO: The layer size is wrong; that's why some files don't show up.
         rect, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.35f);
     pTarget->CreateLayer(&pFileLayer);
 
@@ -608,37 +669,80 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
         pTarget->DrawEllipse(ellipse, pFillBrush, mx.stroke);
     }
 
-    // Center circle.
+    // Center circle or pie slices.
 
+// TODO: Cache geometries for faster repainting?
     {
         D2D1_ELLIPSE ellipse;
         ellipse.point = m_center;
         ellipse.radiusX = mx.center_radius;
         ellipse.radiusY = mx.center_radius;
 
-// TODO: Also draw separator lines between roots.
-        ID2D1EllipseGeometry* pGeometry = nullptr;
-        if (SUCCEEDED(target.Factory()->CreateEllipseGeometry(ellipse, &pGeometry)))
+        ID2D1EllipseGeometry* pCircle = nullptr;
+        if (SUCCEEDED(target.Factory()->CreateEllipseGeometry(ellipse, &pCircle)))
         {
-            if (highlight && IsRoot(highlight))
-                pFillBrush->SetColor(D2D1::ColorF(D2D1::ColorF::LightSteelBlue));
-            else
-                pFillBrush->SetColor(D2D1::ColorF(D2D1::ColorF::LightGray));
-            pTarget->FillGeometry(pGeometry, pFillBrush);
-            pTarget->DrawGeometry(pGeometry, pLineBrush, mx.stroke);
-
-            for (const auto root : m_roots)
+            if (m_roots.size() &&
+                m_roots[0]->GetFreeSpace() &&
+                m_start_angles.size() == m_roots.size() &&
+                m_free_angles.size() == m_roots.size())
             {
-                if (highlight == root)
+                FLOAT end = m_start_angles[0];
+                for (size_t ii = m_roots.size(); ii--;)
                 {
-                    ReleaseI(pHighlight);
-                    pHighlight = pGeometry;
-                    pHighlight->AddRef();
-                    break;
+                    const FLOAT start = m_start_angles[ii];
+                    const FLOAT free = m_free_angles[ii];
+
+                    const bool isHighlight = (highlight == m_roots[ii]);
+
+                    ID2D1Geometry* pGeometry = nullptr;
+                    if (SUCCEEDED(MakeArcGeometry(target, start, free, 0.0f, mx.center_radius, &pGeometry)))
+                    {
+                        pFillBrush->SetColor(MakeRootColor(isHighlight, false));
+                        pTarget->FillGeometry(pGeometry, pFillBrush);
+
+                        ReleaseI(pGeometry);
+                    }
+                    if (SUCCEEDED(MakeArcGeometry(target, free, end, 0.0f, mx.center_radius, &pGeometry)))
+                    {
+                        pFillBrush->SetColor(MakeRootColor(isHighlight, true));
+                        pTarget->FillGeometry(pGeometry, pFillBrush);
+
+                        ReleaseI(pGeometry);
+                    }
+
+                    end = start;
                 }
+
+            }
+            else
+            {
+                const bool isHighlight = (m_roots.size() && highlight == m_roots[0]);
+                pFillBrush->SetColor(MakeRootColor(isHighlight, false));
+                pTarget->FillGeometry(pCircle, pFillBrush);
             }
 
-            ReleaseI(pGeometry);
+            pTarget->DrawGeometry(pCircle, pLineBrush, mx.stroke);
+
+            ReleaseI(pCircle);
+        }
+
+        if (highlight)
+        {
+            ReleaseI(pHighlight);
+
+            FLOAT end = m_start_angles[0];
+            for (size_t ii = m_roots.size(); ii--;)
+            {
+                const FLOAT start = m_start_angles[ii];
+
+                if (highlight == m_roots[ii])
+                {
+                    if (SUCCEEDED(MakeArcGeometry(target, start, end, 0.0f, mx.center_radius, &pHighlight)))
+                        break;
+                }
+
+                end = start;
+            }
         }
     }
 
@@ -657,64 +761,30 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
 
         for (const auto arc : m_rings[depth])
         {
-            const D2D1_POINT_2F inner_start_point = MakePoint(m_center, inner_radius, arc.m_start);
-            const D2D1_POINT_2F inner_end_point = MakePoint(m_center, inner_radius, arc.m_end);
-// TODO: When inner_start_point == inner_end_point, D2D gets confused where to
-// draw the arc, since it's a full circle.
-
-            ID2D1PathGeometry* pGeometry = nullptr;
-            if (SUCCEEDED(target.Factory()->CreatePathGeometry(&pGeometry)))
+            ID2D1Geometry* pGeometry = nullptr;
+            if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &pGeometry)))
             {
-                ID2D1GeometrySink* pSink = nullptr;
-                if (SUCCEEDED(pGeometry->Open(&pSink)))
+                const bool isFile = !!arc.m_node->AsFile();
+                const bool isHighlight = (highlight == arc.m_node);
+
+                pFillBrush->SetColor(MakeColor(arc, depth, isHighlight));
+
+                if (isFile)
+                    pTarget->PushLayer(fileLayerParams, pFileLayer);
+
+                pTarget->FillGeometry(pGeometry, pFillBrush);
+                pTarget->DrawGeometry(pGeometry, pLineBrush, mx.stroke);
+
+                if (isHighlight)
                 {
-                    D2D1_ARC_SEGMENT inner;
-                    inner.point = inner_end_point;
-                    inner.size = D2D1::SizeF(inner_radius, inner_radius);
-                    inner.rotationAngle = arc.m_start;
-                    inner.sweepDirection = D2D1_SWEEP_DIRECTION_CLOCKWISE;
-                    inner.arcSize = (arc.m_end - arc.m_start > 180) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
-
-                    D2D1_ARC_SEGMENT outer;
-                    outer.point = MakePoint(m_center, outer_radius, arc.m_start);
-                    outer.size = D2D1::SizeF(outer_radius, outer_radius);
-                    outer.rotationAngle = arc.m_end;
-                    outer.sweepDirection = D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE;
-                    outer.arcSize = (arc.m_end - arc.m_start > 180) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
-
-                    pSink->SetFillMode(D2D1_FILL_MODE_WINDING);
-                    pSink->BeginFigure(inner_start_point, D2D1_FIGURE_BEGIN_FILLED);
-                    pSink->AddArc(inner);
-                    pSink->AddLine(MakePoint(m_center, outer_radius, arc.m_end));
-                    pSink->AddArc(outer);
-                    pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
-
-                    pSink->Close();
-                    ReleaseI(pSink);
-
-                    const bool isFile = !!arc.m_node->AsFile();
-                    const bool isHighlight = (highlight == arc.m_node);
-
-                    pFillBrush->SetColor(MakeColor(arc, depth, isHighlight));
-
-                    if (isFile)
-                        pTarget->PushLayer(fileLayerParams, pFileLayer);
-
-                    pTarget->FillGeometry(pGeometry, pFillBrush);
-                    pTarget->DrawGeometry(pGeometry, pLineBrush, mx.stroke);
-
-                    if (isHighlight)
-                    {
-                        ReleaseI(pHighlight);
-                        pHighlight = pGeometry;
-                        pHighlight->AddRef();
-                    }
-
-                    if (isFile)
-                        pTarget->PopLayer();
+                    ReleaseI(pHighlight);
+                    pHighlight = pGeometry;
+                    pHighlight->AddRef();
                 }
 
-// TODO: Cache geometries for faster repainting?
+                if (isFile)
+                    pTarget->PopLayer();
+
                 ReleaseI(pGeometry);
             }
         }
@@ -735,6 +805,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
 
 std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
 {
+    const FLOAT angle = FindAngle(m_center, FLOAT(pt.x), FLOAT(pt.y));
     const FLOAT xdelta = (pt.x - m_center.x);
     const FLOAT ydelta = (pt.y - m_center.y);
     FLOAT radius = sqrt((xdelta * xdelta) + (ydelta * ydelta));
@@ -744,29 +815,25 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
     const bool use_parent = (radius <= mx.center_radius);
     if (use_parent)
     {
-        if (m_roots.size() == 1)
-            return m_roots[0];
-// TODO: Need the actual start/end arcs for each root, otherwise there may be
-// dead spots with no arc.
-        radius = mx.center_radius + (mx.get_thickness(0) / 2);
-    }
-
-    radius -= mx.center_radius;
-
-    for (size_t depth = 0; depth < m_rings.size(); ++depth)
-    {
-        radius -= mx.get_thickness(depth);
-        if (radius < 0.0f)
+        for (size_t ii = m_start_angles.size(); ii--;)
         {
-            const FLOAT angle = FindAngle(m_center, FLOAT(pt.x), FLOAT(pt.y));
-            for (const auto arc : m_rings[depth])
+            if (m_start_angles[ii] <= angle)
+                return m_roots[ii];
+        }
+    }
+    else
+    {
+        radius -= mx.center_radius;
+
+        for (size_t depth = 0; depth < m_rings.size(); ++depth)
+        {
+            radius -= mx.get_thickness(depth);
+            if (radius < 0.0f)
             {
-                if (arc.m_start <= angle && angle < arc.m_end)
+                for (const auto arc : m_rings[depth])
                 {
-                    std::shared_ptr<Node> node(arc.m_node);
-                    if (node && use_parent)
-                        node = node->GetParent();
-                    return node;
+                    if (arc.m_start <= angle && angle < arc.m_end)
+                        return arc.m_node;
                 }
             }
         }
@@ -780,5 +847,7 @@ void Sunburst::OnDpiChanged(const DpiScaler& dpi)
     m_dpi.OnDpiChanged(dpi);
 
     m_rings.clear();
+    m_start_angles.clear();
+    m_free_angles.clear();
 }
 

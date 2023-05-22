@@ -225,7 +225,7 @@ HWND MainWindow::Create(HINSTANCE hinst)
         const LONG cxWork = rcDesk.right - rcDesk.left;
         const LONG cyWork = rcDesk.bottom - rcDesk.top;
 
-// TODO: Real size.
+// TODO: Remember previous size.
         const LONG cx = m_dpi.Scale(std::max<int>(320, cxWork / 2));
         const LONG cy = m_dpi.Scale(std::max<int>(320, cyWork / 2));
 
@@ -253,31 +253,25 @@ void MainWindow::Expand(const std::shared_ptr<Node>& node)
     if (!node || node->AsFile())
         return;
 
-    bool up = false;
-    for (const auto root : m_roots)
-    {
-        if (root == node)
-            up = true;
-    }
-
+    const bool up = (m_roots.size() == 1 && node == m_roots[0]);
     if (up && !node->GetParent())
-        return;
-
-    std::shared_ptr<DirNode> dir;
-    if (up)
-        dir = node->GetParent();
-    else if (node->AsDir())
-        dir = std::static_pointer_cast<DirNode>(const_cast<DirNode*>(node->AsDir())->shared_from_this());
-
-    if (!dir)
-        return;
-
-    if (up && !dir->GetParent())
     {
+        if (m_original_roots.size() == 1 && node == m_original_roots[0])
+            return;
+
         m_roots = m_original_roots;
     }
     else
     {
+        std::shared_ptr<DirNode> dir;
+        if (up)
+            dir = node->GetParent();
+        else if (node->AsDir())
+            dir = std::static_pointer_cast<DirNode>(node->AsDir()->shared_from_this());
+
+        if (!dir)
+            return;
+
         m_roots.clear();
         m_roots.emplace_back(dir);
     }
@@ -497,6 +491,26 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
             Expand(node);
+        }
+        break;
+
+// TODO: Context menu.
+    case WM_RBUTTONDOWN:
+        {
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+
+            std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
+            if (node)
+            {
+                DirNode* dir = node->AsDir();
+                if (dir)
+                {
+                    dir->Hide(!dir->Hidden());
+                    InvalidateRect(m_hwnd, nullptr, false);
+                }
+            }
         }
         break;
 

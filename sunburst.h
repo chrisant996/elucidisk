@@ -57,9 +57,10 @@ public:
 
 protected:
     static D2D1_COLOR_F     MakeColor(const Arc& arc, size_t depth, bool highlight);
+    static D2D1_COLOR_F     MakeRootColor(bool highlight, bool free);
     static void             MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span);
     std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring);
-    bool                    IsRoot(const std::shared_ptr<Node>& node);
+    bool                    MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, FLOAT inner_radius, FLOAT outer_radius, ID2D1Geometry** ppGeometry);
 
 private:
     DpiScaler               m_dpi;
@@ -68,5 +69,7 @@ private:
 
     std::vector<std::shared_ptr<DirNode>> m_roots;
     std::vector<std::vector<Arc>> m_rings;
+    std::vector<FLOAT>      m_start_angles;
+    std::vector<FLOAT>      m_free_angles;
 };
 
