@@ -4,7 +4,7 @@
 #include "main.h"
 #include "data.h"
 
-#define USE_FAKE_DATA
+//#define USE_FAKE_DATA
 
 static void skip_separators(const WCHAR*& path)
 {
@@ -85,13 +85,15 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
 #ifdef USE_FAKE_DATA
 static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool include_free_space)
 {
+    static const ULONGLONG units = 1024;
+
     std::vector<std::shared_ptr<DirNode>> dirs;
 
     if (include_free_space)
     {
         dirs.emplace_back(root->AddDir(TEXT("Abc")));
         dirs.emplace_back(root->AddDir(TEXT("Def")));
-        root->AddFreeSpace(1000, 2000);
+        root->AddFreeSpace(1000 * units, 2000 * units);
     }
     else if (root->GetParent() && root->GetParent()->GetParent())
     {
@@ -99,10 +101,14 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
     }
     else
     {
-        root->AddFile(TEXT("Red"), 4000);
-        root->AddFile(TEXT("Green"), 8000);
+        root->AddFile(TEXT("Red"), 4000 * units);
+        root->AddFile(TEXT("Green"), 8000 * units);
         if (index > 0)
-            root->AddFile(TEXT("Blue"), 12000);
+        {
+            std::shared_ptr<DirNode> d = root->AddDir(TEXT("Blue"));
+            d->AddFile(TEXT("Lightning"), 12000 * units);
+            d->Finish();
+        }
     }
 
     for (size_t ii = 0; ii < dirs.size(); ++ii)
