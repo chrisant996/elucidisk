@@ -629,10 +629,10 @@ D2D1_COLOR_F Sunburst::MakeRootColor(bool highlight, bool free)
 bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, const FLOAT start, FLOAT end, const FLOAT inner_radius, const FLOAT outer_radius, ID2D1Geometry** ppGeometry)
 {
     // When start and end points of an arc are identical, D2D gets confused
-    // where to draw the arc, since it's a full circle.
-// TODO: If this doesn't always work, then another approach could be to recede
-// the end angle until end point != start point.
-    const bool forward = (start != end);
+    // where to draw the arc, since it's a full circle.  This compensates.
+    const bool forward = (start != end && start != end - 360.0f);
+
+    const bool has_line = (start != end) || (inner_radius > 0.0f);
     if (end <= start)
         end += 360.0f;
 
@@ -660,7 +660,7 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, const FLOAT start
             outer.arcSize = arcSize;
             pSink->AddArc(outer);
 
-            if (forward || inner_radius > 0.0f)
+            if (has_line)
                 pSink->AddLine(inner_end_point);
 
             if (inner_radius > 0.0f)
