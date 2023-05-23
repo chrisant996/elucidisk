@@ -1,0 +1,29 @@
+#include "version.h"
+#include "version.rc"
+#include "res.h"
+
+IDR_CONTEXT_MENU MENU DISCARDABLE
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "&Open File",              IDM_OPEN_FILE
+        MENUITEM SEPARATOR
+        MENUITEM "&Recycle",                IDM_RECYCLE_ENTRY
+        MENUITEM "&Delete",                 IDM_DELETE_ENTRY
+    END
+    POPUP ""
+    BEGIN
+        MENUITEM "&Open in Explorer",       IDM_OPEN_DIRECTORY
+        MENUITEM SEPARATOR
+        MENUITEM "&Recycle",                IDM_RECYCLE_ENTRY
+        MENUITEM "&Delete",                 IDM_DELETE_ENTRY
+        MENUITEM SEPARATOR
+        MENUITEM "&Hide",                   IDM_HIDE_DIRECTORY
+        MENUITEM "&Show",                   IDM_SHOW_DIRECTORY
+    END
+    POPUP ""
+    BEGIN
+        MENUITEM "&Open in Explorer",       IDM_OPEN_DIRECTORY
+    END
+END
+

@@ -8,6 +8,7 @@
 #include "actions.h"
 #include "ui.h"
 #include "sunburst.h"
+#include "res.h"
 #include <assert.h>
 #include <windowsx.h>
 #include <iosfwd>
@@ -148,9 +149,9 @@ class MainWindow
     };
 
 public:
-                            MainWindow();
+                            MainWindow(HINSTANCE hinst);
 
-    HWND                    Create(HINSTANCE hinst);
+    HWND                    Create();
     void                    Scan(int argc, const WCHAR** argv, bool rescan);
 
 protected:
@@ -172,6 +173,7 @@ protected:
 
 private:
     HWND                    m_hwnd = 0;
+    const HINSTANCE         m_hinst;
     DpiScaler               m_dpi;
     bool                    m_inWmDpiChanged = false;
 
@@ -190,12 +192,13 @@ private:
     const MainWindow& operator=(const MainWindow&) = delete;
 };
 
-MainWindow::MainWindow()
-: m_scanner(m_ui_mutex)
+MainWindow::MainWindow(HINSTANCE hinst)
+: m_hinst(hinst)
+, m_scanner(m_ui_mutex)
 {
 }
 
-HWND MainWindow::Create(HINSTANCE hinst)
+HWND MainWindow::Create()
 {
     static const WCHAR* const c_class = TEXT("Elucidisk_MainWindow");
     static const WCHAR* const c_caption = TEXT("Elucidisk");
@@ -207,7 +210,7 @@ HWND MainWindow::Create(HINSTANCE hinst)
         WNDCLASS wc = { 0 };
         wc.style = CS_HREDRAW|CS_VREDRAW|CS_DBLCLKS;
         wc.lpfnWndProc = StaticWndProc;
-        wc.hInstance = hinst;
+        wc.hInstance = m_hinst;
         wc.hCursor = LoadCursor(0, IDC_ARROW);
         wc.hbrBackground = HBRUSH(COLOR_WINDOW + 1 );
         wc.lpszClassName = c_class;
@@ -216,7 +219,7 @@ HWND MainWindow::Create(HINSTANCE hinst)
     }
 
     assert(!m_hwnd);
-    const HWND hwnd = CreateWindowExW(0, c_class, c_caption, c_style, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hinst, this);
+    const HWND hwnd = CreateWindowExW(0, c_class, c_caption, c_style, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, m_hinst, this);
     assert(hwnd == m_hwnd);
 
     if (hwnd)
@@ -488,6 +491,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_LBUTTONDOWN:
+    case WM_LBUTTONDBLCLK:
         {
             POINT pt;
             pt.x = GET_X_LPARAM(lParam);
@@ -498,8 +502,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         }
         break;
 
-// TODO: Context menu.
-    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
         {
             POINT pt;
             pt.x = GET_X_LPARAM(lParam);
@@ -509,11 +512,59 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             if (node)
             {
                 DirNode* dir = node->AsDir();
+                FileNode* file = node->AsFile();
+
+                int nPos;
+                if (file)
+                    nPos = 0;
+                else if (dir)
+                    nPos = dir->GetFreeSpace() ? 2 : 1;
+                else
+                    break;
+
+                POINT ptScreen = pt;
+                ClientToScreen(m_hwnd, &ptScreen);
+
+                HMENU hmenu = LoadMenu(m_hinst, MAKEINTRESOURCE(IDR_CONTEXT_MENU));
+                HMENU hmenuSub = GetSubMenu(hmenu, nPos);
+
                 if (dir)
+                    DeleteMenu(hmenuSub, dir->Hidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
+
+                switch (TrackPopupMenu(hmenuSub, TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
                 {
-                    dir->Hide(!dir->Hidden());
-                    InvalidateRect(m_hwnd, nullptr, false);
+                case IDM_OPEN_DIRECTORY:
+                    if (dir)
+                    {
+// TODO: Open directory.
+                    }
+                    break;
+
+                case IDM_OPEN_FILE:
+                    if (file)
+                    {
+// TODO: Open file.
+                    }
+                    break;
+
+                case IDM_RECYCLE_ENTRY:
+// TODO: Recycle.
+                    break;
+                case IDM_DELETE_ENTRY:
+// TODO: Delete.
+                    break;
+
+                case IDM_HIDE_DIRECTORY:
+                case IDM_SHOW_DIRECTORY:
+                    if (dir)
+                    {
+                        dir->Hide(!dir->Hidden());
+                        InvalidateRect(m_hwnd, nullptr, false);
+                    }
+                    break;
                 }
+
+                DestroyMenu(hmenu);
             }
         }
         break;
@@ -628,9 +679,9 @@ LRESULT MainWindow::OnNcDestroy()
 
 HWND MakeUi(HINSTANCE hinst, int argc, const WCHAR** argv)
 {
-    MainWindow* p = new MainWindow();
+    MainWindow* p = new MainWindow(hinst);
 
-    HWND hwnd = p->Create(hinst);
+    HWND hwnd = p->Create();
 
     if (hwnd)
     {

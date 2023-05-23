@@ -72,7 +72,7 @@ project("elucidisk")
     files("ui.cpp")
     files("dpi.cpp")
     files("main.cpp")
-    files("version.rc")
+    files("main.rc")
 
     configuration("vs*")
         defines("_CRT_SECURE_NO_WARNINGS")
