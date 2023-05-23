@@ -298,8 +298,8 @@ struct SunburstMetrics
 {
     SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds, size_t max_depth)
     : stroke(FLOAT(dpi.Scale(1)))
-    , margin(FLOAT(dpi.Scale(4)))
-    , indicator_thickness(FLOAT(dpi.Scale(3)))
+    , margin(FLOAT(dpi.Scale(5)))
+    , indicator_thickness(FLOAT(dpi.Scale(4)))
     , center_radius(FLOAT(dpi.Scale(c_centerRadius)))
     , boundary_radius(std::min<FLOAT>(bounds.right - bounds.left, bounds.bottom - bounds.top) / 2 - margin)
     , max_radius(boundary_radius - (margin + indicator_thickness + margin))
@@ -795,8 +795,9 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
 
     // Rings.
 
+    size_t depth;
     FLOAT inner_radius = mx.center_radius;
-    for (size_t depth = 0; depth < m_rings.size(); ++depth)
+    for (depth = 0; depth < m_rings.size(); ++depth)
     {
         const FLOAT thickness = mx.get_thickness(depth);
         if (thickness <= 0.0f)
@@ -842,7 +843,35 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
         inner_radius = outer_radius;
     }
 
-    ReleaseI(pFileLayer);
+    // "More" indicators.
+
+    if (depth < m_rings.size())
+    {
+        inner_radius += mx.margin;
+        const FLOAT outer_radius = inner_radius + mx.indicator_thickness;
+
+        for (const auto arc : m_rings[depth])
+        {
+            const bool isFile = !!arc.m_node->AsFile();
+            if (isFile && !arc.m_node->GetParent()->Finished())
+                continue;
+
+            ID2D1Geometry* pGeometry = nullptr;
+            if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &pGeometry)))
+            {
+                const bool isHighlight = (highlight == arc.m_node);
+
+                pFillBrush->SetColor(D2D1::ColorF(isFile ? 0x999999 : 0x555555));
+                pTarget->FillGeometry(pGeometry, pFillBrush);
+
+                pFillBrush->SetColor(D2D1::ColorF(D2D1::ColorF::White));
+                pTarget->DrawGeometry(pGeometry, pFillBrush, mx.stroke / 2);
+
+                ReleaseI(pGeometry);
+            }
+        }
+
+    }
 
     // Hover highlight.
 
@@ -851,6 +880,8 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
         pTarget->DrawGeometry(pHighlight, pLineBrush, mx.stroke * 2.0f);
         ReleaseI(pHighlight);
     }
+
+    ReleaseI(pFileLayer);
 }
 
 std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
@@ -858,7 +889,7 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
     const FLOAT angle = FindAngle(m_center, FLOAT(pt.x), FLOAT(pt.y));
     const FLOAT xdelta = (pt.x - m_center.x);
     const FLOAT ydelta = (pt.y - m_center.y);
-    FLOAT radius = sqrt((xdelta * xdelta) + (ydelta * ydelta));
+    const FLOAT radius = sqrt((xdelta * xdelta) + (ydelta * ydelta));
 
     SunburstMetrics mx(m_dpi, m_bounds, m_rings.size());
 
@@ -873,19 +904,35 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
     }
     else
     {
-        radius -= mx.center_radius;
+        FLOAT inner_radius = mx.center_radius;
 
         for (size_t depth = 0; depth < m_rings.size(); ++depth)
         {
-            radius -= mx.get_thickness(depth);
-            if (radius < 0.0f)
+            const FLOAT thickness = mx.get_thickness(depth);
+            if (thickness <= 0.0f)
+                break;
+
+            FLOAT outer_radius = inner_radius + thickness;
+            if (outer_radius > mx.max_radius)
+            {
+                inner_radius += mx.margin;
+                outer_radius = inner_radius + mx.indicator_thickness;
+            }
+
+            if (inner_radius < radius && radius <= outer_radius)
             {
                 for (const auto arc : m_rings[depth])
                 {
                     if (arc.m_start <= angle && angle < arc.m_end)
                         return arc.m_node;
                 }
+                break;
             }
+
+            if (outer_radius > mx.max_radius)
+                break;
+
+            inner_radius = outer_radius;
         }
     }
 
