@@ -174,6 +174,7 @@ protected:
 private:
     HWND                    m_hwnd = 0;
     const HINSTANCE         m_hinst;
+    HFONT                   m_hfont = 0;
     DpiScaler               m_dpi;
     bool                    m_inWmDpiChanged = false;
 
@@ -191,6 +192,16 @@ private:
     MainWindow(const MainWindow&) = delete;
     const MainWindow& operator=(const MainWindow&) = delete;
 };
+
+static HFONT MakeFont(const DpiScaler& dpi)
+{
+    LOGFONT lf = { 0 };
+    lstrcpyn(lf.lfFaceName, TEXT("Segoe UI"), _countof(lf.lfFaceName));
+    lf.lfHeight = dpi.PointSizeToHeight(10);
+    lf.lfWeight = FW_NORMAL;
+    lf.lfCharSet = DEFAULT_CHARSET;
+    return CreateFontIndirect(&lf);
+}
 
 MainWindow::MainWindow(HINSTANCE hinst)
 : m_hinst(hinst)
@@ -306,16 +317,21 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
     RECT rcLine = rc;
     std::wstring text;
 
-// TODO: SelectFont(hdc, ...);
+    if (!m_hfont)
+        return;
+
+    SelectFont(hdc, m_hfont);
     GetTextMetrics(hdc, &tm);
 
-    rcLine.left += m_dpi.Scale(4);
+    const int padding = m_dpi.Scale(4);
+
+    InflateRect(&rcLine, -padding, 0);
     rcLine.bottom = rcLine.top + tm.tmHeight;
 
     node->GetFullPath(text);
-    ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, text.c_str(), int(text.length()), nullptr);
+    DrawText(hdc, text.c_str(), int(text.length()), &rcLine, DT_LEFT|DT_NOCLIP|DT_NOPREFIX|DT_PATH_ELLIPSIS|DT_SINGLELINE|DT_TOP);
 
-    OffsetRect(&rcLine, 0, tm.tmHeight);
+    OffsetRect(&rcLine, 0, tm.tmHeight + padding);
     rcLine.right = rcLine.left + m_dpi.Scale(100);
 
     WCHAR sz[100];
@@ -324,11 +340,11 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
     if (node)
     {
         if (node->AsDir())
-            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), FLOAT(node->AsDir()->GetSize() / 1024 / 1024));
+            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsDir()->GetSize()) / 1024 / 1024);
         else if (node->AsFile())
-            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), FLOAT(node->AsFile()->GetSize() / 1024 / 1024));
+            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsFile()->GetSize()) / 1024 / 1024);
         else if (node->AsFreeSpace())
-            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), FLOAT(node->AsFreeSpace()->GetFreeSize() / 1024 / 1024));
+            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsFreeSpace()->GetFreeSize()) / 1024 / 1024);
     }
     ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
 
@@ -389,9 +405,12 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             GetCursorPos(&pt);
             ScreenToClient(m_hwnd, &pt);
 
-            TEXTMETRIC tm;
-// TODO: SelectFont(ps.hdc, ...);
-            GetTextMetrics(ps.hdc, &tm);
+            TEXTMETRIC tm = { 0 };
+            if (m_hfont)
+            {
+                SelectFont(ps.hdc, m_hfont);
+                GetTextMetrics(ps.hdc, &tm);
+            }
 
             const LONG top_reserve = tm.tmHeight; // Space for full path.
             const LONG margin_reserve = m_dpi.Scale(3);
@@ -443,13 +462,18 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
             // GDI painting.
 
+            if (m_hfont)
             {
                 DrawNodeInfo(ps.hdc, rcClient, m_hover_node);
+
+                ULONGLONG used = 0;
+                for (const auto root : m_roots)
+                    used += root->GetSize();
 
                 static int s_counter = 0;
                 WCHAR sz[100];
                 s_counter++;
-                wsprintf(sz, TEXT("Hello - %u"), s_counter);
+                swprintf_s(sz, _countof(sz), TEXT("%.1f GB - %u"), double(used) / 1024 / 1024 / 1024, s_counter);
 
                 SIZE size;
                 GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
@@ -502,7 +526,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         }
         break;
 
-    case WM_RBUTTONUP:
+    case WM_RBUTTONDOWN:
         {
             POINT pt;
             pt.x = GET_X_LPARAM(lParam);
@@ -531,7 +555,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 if (dir)
                     DeleteMenu(hmenuSub, dir->Hidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
 
-                switch (TrackPopupMenu(hmenuSub, TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
+                switch (TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
                 {
                 case IDM_OPEN_DIRECTORY:
                     if (dir)
@@ -652,6 +676,10 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
 {
     m_dpi = dpi;
 
+    if (m_hfont)
+        DeleteFont(m_hfont);
+    m_hfont = MakeFont(dpi);
+
 #if 0
     const WORD realDpi = __GetDpiForWindow(m_hwnd);
 // TODO: Create font.
@@ -663,6 +691,11 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
 LRESULT MainWindow::OnDestroy()
 {
     m_directRender.ReleaseDeviceResources();
+    if (m_hfont)
+    {
+        DeleteFont(m_hfont);
+        m_hfont = 0;
+    }
     return 0;
 }
 
