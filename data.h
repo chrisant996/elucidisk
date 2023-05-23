@@ -50,11 +50,13 @@ public:
     std::vector<std::shared_ptr<FileNode>> CopyFiles() const;
     std::shared_ptr<FreeSpaceNode> GetFreeSpace() const { return m_free; }
     ULONGLONG               GetSize() const { return m_size; }
+    void                    Hide(bool hide=true) { m_hide = hide; }
     bool                    Hidden() const { return m_hide; }
     std::shared_ptr<DirNode> AddDir(const WCHAR* name);
     void                    AddFile(const WCHAR* name, ULONGLONG size);
     void                    AddFreeSpace(ULONGLONG free, ULONGLONG total);
-    void                    Hide(bool hide=true) { m_hide = hide; }
+    void                    Finish() { m_finished = true; }
+    bool                    Finished() const { return m_finished; }
 private:
     mutable std::mutex      m_mutex;
     std::vector<std::shared_ptr<DirNode>> m_dirs;
@@ -62,6 +64,7 @@ private:
     std::shared_ptr<FreeSpaceNode> m_free; // TODO: Only needed on a RootDirNode.
     ULONGLONG               m_count_files = 0;
     ULONGLONG               m_size = 0;
+    bool                    m_finished = false;
     bool                    m_hide = false;
 };
 

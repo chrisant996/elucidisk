@@ -4,7 +4,7 @@
 #include "main.h"
 #include "data.h"
 
-//#define USE_FAKE_DATA
+#define USE_FAKE_DATA
 
 static void skip_separators(const WCHAR*& path)
 {
@@ -40,23 +40,46 @@ static void get_drive(const WCHAR* path, std::wstring& out)
     }
 }
 
-std::shared_ptr<DirNode> MakeRoot(const WCHAR* path)
+std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
 {
-    std::wstring tmp;
-    if (!path)
+    std::wstring path;
+    if (!_path)
     {
         WCHAR sz[1024];
         const DWORD dw = GetCurrentDirectory(_countof(sz), sz);
 
         if (dw > 0 && dw < _countof(sz))
-            get_drive(sz, tmp);
-        if (tmp.empty())
-            tmp = TEXT(".");
-
-        path = tmp.c_str();
+            get_drive(sz, path);
+        if (path.empty())
+            path = TEXT(".");
+    }
+    else
+    {
+        path = _path;
     }
 
-    return std::make_shared<DirNode>(path);
+    if (path.empty())
+        return nullptr;
+
+    ensure_separator(path);
+    std::shared_ptr<DirNode> root = std::make_shared<DirNode>(path.c_str());
+
+// TODO: Support free space on UNC shares and on \\?\X: drives.
+    const WCHAR* p = path.c_str();
+    if (p[0] && p[1] == ':' && is_separator(p[2]) && !p[3])
+    {
+        DWORD sectors_per_cluster;
+        DWORD bytes_per_sector;
+        DWORD free_clusters;
+        DWORD total_clusters;
+        if (GetDiskFreeSpace(p, &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
+        {
+            const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
+            root->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
+        }
+    }
+
+    return root;
 }
 
 #ifdef USE_FAKE_DATA
@@ -84,38 +107,24 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
 
     for (size_t ii = 0; ii < dirs.size(); ++ii)
         FakeScan(dirs[ii], ii, false);
+
+    root->Finish();
 }
 #endif
 
-void Scan(const std::shared_ptr<DirNode> root, const LONG this_generation, volatile LONG* current_generation, std::recursive_mutex& mutex)
+void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, volatile LONG* current_generation, std::recursive_mutex& mutex)
 {
     std::wstring find;
     root->GetFullPath(find);
     ensure_separator(find);
 
-// TODO: Support free space on UNC shares.
-    const bool include_free_space = (find.length() == 3 && find.c_str()[1] == ':' && is_separator(find.c_str()[2]));
-
 #ifdef USE_FAKE_DATA
     if (GetTickCount() != 0)
     {
-        FakeScan(root, 0, include_free_space);
+        FakeScan(root, 0, true);
         return;
     }
 #endif
-
-    if (include_free_space)
-    {
-        DWORD sectors_per_cluster;
-        DWORD bytes_per_sector;
-        DWORD free_clusters;
-        DWORD total_clusters;
-        if (GetDiskFreeSpace(find.c_str(), &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
-        {
-            const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
-            root->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
-        }
-    }
 
     find.append(TEXT("*"));
 
@@ -156,5 +165,7 @@ void Scan(const std::shared_ptr<DirNode> root, const LONG this_generation, volat
             break;
         Scan(dir, this_generation, current_generation, mutex);
     }
+
+    root->Finish();
 }
 

@@ -13,6 +13,12 @@ constexpr FLOAT M_PI = 3.14159265358979323846f;
 constexpr FLOAT c_minAngle = 1.0f;
 constexpr int c_centerRadius = 50;
 
+#ifndef USE_PROPORTIONAL_RING_THICKNESS
+constexpr int c_thickness = 25;
+constexpr int c_retrograde = 1;
+constexpr int c_retrograde_depths = 10;
+#endif
+
 HRESULT InitializeD2D()
 {
     CoInitialize(0);
@@ -298,7 +304,12 @@ struct SunburstMetrics
     , boundary_radius(std::min<FLOAT>(bounds.right - bounds.left, bounds.bottom - bounds.top) / 2 - margin)
     , max_radius(boundary_radius - (margin + indicator_thickness + margin))
     , range_radius(max_radius - center_radius)
+#ifndef USE_PROPORTIONAL_RING_THICKNESS
+    , thickness(FLOAT(dpi.Scale(c_thickness)))
+    , retrograde(FLOAT(dpi.Scale(c_retrograde)))
+#endif
     {
+#ifdef USE_PROPORTIONAL_RING_THICKNESS
         static constexpr float c_rings[] =
         {
             0.20f,
@@ -328,11 +339,16 @@ struct SunburstMetrics
             thicknesses[ii] = c_rings[ii] * range_radius / scale;
         for (size_t ii = max_depth; ii < _countof(c_rings); ++ii)
             thicknesses[ii] = 0.0f;
+#endif
     }
 
     FLOAT get_thickness(size_t depth)
     {
+#ifdef USE_PROPORTIONAL_RING_THICKNESS
         return (depth < _countof(thicknesses)) ? thicknesses[depth] : 0.0f;
+#else
+        return thickness - (retrograde * std::min<size_t>(depth, c_retrograde_depths));
+#endif
     }
 
     const FLOAT stroke;
@@ -344,7 +360,12 @@ struct SunburstMetrics
     const FLOAT range_radius;
 
 private:
+#ifdef USE_PROPORTIONAL_RING_THICKNESS
     FLOAT thicknesses[10];
+#else
+    const FLOAT thickness;
+    const FLOAT retrograde;
+#endif
 };
 
 //----------------------------------------------------------------------------
@@ -365,12 +386,13 @@ void Sunburst::Init(const Sunburst& other)
     m_center = other.m_center;
 }
 
-void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span)
+void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert)
 {
+    const bool zero = (total == 0.0f);
     Arc arc;
-    arc.m_start = start + float(sweep * span / total);
+    arc.m_start = start + float(zero ? 0.0f : convert * sweep * span / total);
     sweep += size;
-    arc.m_end = start + float(sweep * span / total);
+    arc.m_end = start + float(zero ? 0.0f : convert * sweep * span / total);
 
 #ifdef DEBUG
     if (arc.m_start > 360.0f || arc.m_end > 360.0f)
@@ -392,8 +414,10 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 {
     const std::vector<std::shared_ptr<DirNode>> roots = _roots;
 
-    std::vector<double> totals;
-    std::vector<float> spans;
+    std::vector<double> totals; // Total space (used + free); when FreeSpaceNode is present it's total hardware space.
+    std::vector<double> used;   // Used space; when FreeSpaceNode is present it's used hardware space.
+    std::vector<double> scale;  // Multiplier to scale used content space into used hardware space.
+    std::vector<float> spans;   // Angle span for used space.
 
     m_roots = roots;
     m_rings.clear();
@@ -404,11 +428,25 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
         double grand_total = 0;
         for (const auto dir : roots)
         {
+            const double size = double(dir->GetSize());
             std::shared_ptr<FreeSpaceNode> free = dir->GetFreeSpace();
             if (free)
+            {
                 totals.emplace_back(double(free->GetTotalSize()));
+                used.emplace_back(double(free->GetTotalSize() - free->GetFreeSize()));
+                if (size == 0.0f || used.back() == 0.0f)
+                    scale.emplace_back(0.0f);
+                else if (dir->Finished())
+                    scale.emplace_back(used.back() / size);
+                else
+                    scale.emplace_back(used.back() / std::max<double>(used.back(), size));
+            }
             else
-                totals.emplace_back(double(dir->GetSize()));
+            {
+                totals.emplace_back(size);
+                used.emplace_back(size);
+                scale.emplace_back(1.0f);
+            }
             grand_total += totals.back();
         }
 
@@ -416,10 +454,11 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
         for (size_t ii = 0; ii < roots.size(); ++ii)
         {
             const float start = float(sweep * 360 / grand_total);
+            const float mid = float((sweep + used[ii]) * 360 / grand_total);
             sweep += totals[ii];
             const float end = float(sweep * 360 / grand_total);
             m_start_angles.emplace_back(start);
-            spans.emplace_back(end - start);
+            spans.emplace_back(mid - start);
 
             std::shared_ptr<FreeSpaceNode> free = m_roots[ii]->GetFreeSpace();
             if (free)
@@ -442,21 +481,29 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
         std::shared_ptr<FreeSpaceNode> free = root->GetFreeSpace();
 
         const double total = totals[ii];
+        const double consumed = used[ii];
+        const double convert = scale[ii];
         const float start = m_start_angles[ii];
         const float span = spans[ii];
-        const double scale = free ? double(free->GetTotalSize() - free->GetFreeSize()) / root->GetSize() : 1.0f;
-// TODO: The proportions are wrong while painting during async scan.
 
         double sweep = 0;
         for (const auto dir : dirs)
-            MakeArc(arcs, std::static_pointer_cast<Node>(dir), ULONGLONG(dir->GetSize() * scale), sweep, total, start, span);
+            MakeArc(arcs, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, consumed, start, span, convert);
         for (const auto file : files)
-            MakeArc(arcs, std::static_pointer_cast<Node>(file), ULONGLONG(file->GetSize() * scale), sweep, total, start, span);
+            MakeArc(arcs, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, consumed, start, span, convert);
         if (free)
-            MakeArc(arcs, std::static_pointer_cast<Node>(free), free->GetFreeSize(), sweep, total, start, span);
+        {
+            Arc arc;
+            arc.m_start = m_free_angles[ii];
+            arc.m_end = m_start_angles[(ii + 1) % m_roots.size()];
+            if (arc.m_end < arc.m_start)
+                arc.m_end += 360.0f;
+            arc.m_node = free;
+            arcs.emplace_back(std::move(arc));
+        }
     }
 
-    while (m_rings.size() <= 10)
+    while (m_rings.size() <= 20)
     {
         std::vector<Arc> arcs = NextRing(m_rings.back());
         if (arcs.empty())
@@ -761,10 +808,13 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
 
         for (const auto arc : m_rings[depth])
         {
+            const bool isFile = !!arc.m_node->AsFile();
+            if (isFile && !arc.m_node->GetParent()->Finished())
+                continue;
+
             ID2D1Geometry* pGeometry = nullptr;
             if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &pGeometry)))
             {
-                const bool isFile = !!arc.m_node->AsFile();
                 const bool isHighlight = (highlight == arc.m_node);
 
                 pFillBrush->SetColor(MakeColor(arc, depth, isHighlight));

@@ -54,7 +54,11 @@ std::vector<std::shared_ptr<DirNode>> ScannerThread::Start(int argc, const WCHAR
     if (argc)
     {
         for (int ii = 0; ii < argc; ++ii)
-            roots.emplace_back(MakeRoot(argv[ii]));
+        {
+            const auto root = MakeRoot(argv[ii]);
+            if (root)
+                roots.emplace_back(root);
+        }
     }
     else
     {
@@ -459,6 +463,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         }
         break;
 
+// TODO: WM_MOUSEENTER and WM_MOUSELEAVE.
     case WM_MOUSEMOVE:
         {
             POINT pt;
@@ -468,7 +473,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             std::shared_ptr<Node> hover(m_hover_node);
             m_hover_node = m_sunburst.HitTest(pt);
 
-// TODO: Sometimes no highlight is painted even though it should be.
             if (hover != m_hover_node)
                 InvalidateRect(m_hwnd, nullptr, false);
         }
