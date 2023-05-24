@@ -6,13 +6,15 @@ It is modelled after [Scanner](http://www.steffengerlach.de/freeware/),
 [Diskitude](https://madebyevan.com/diskitude/), and other similar disk space 
 viewers.
 
+The name "Elucidisk" is a portmanteau of "elucidate" and "disk".
+
 ## What can it do?
 
 ## Why was it created?
 
-I want the free space on a disk to show up in the sunburst chart.  The only 
-sunburst disk space visualizer I could find that includes the free space is
-Scanner.
+When viewing a sunburst chart of disk space usage, I want the free space on a 
+disk to show up in the chart.  The only sunburst disk space visualizer I could 
+find that includes the free space is Scanner.
 
 I also wanted a few improvements to the user interface, such as highlighting 
 the arc under the mouse pointer and showing names of directories/files when
