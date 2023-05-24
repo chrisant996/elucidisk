@@ -10,10 +10,17 @@
 static ID2D1Factory* s_pD2DFactory = nullptr;
 
 constexpr FLOAT M_PI = 3.14159265358979323846f;
-constexpr FLOAT c_minAngle = 1.0f;
 constexpr int c_centerRadius = 50;
 
-#ifndef USE_PROPORTIONAL_RING_THICKNESS
+#ifdef USE_MIN_ARC_LENGTH
+# define _PASS_MIN_ARC_LENGTH   , outer_radius, mx.min_arc
+#else
+# define _PASS_MIN_ARC_LENGTH
+constexpr FLOAT c_minAngle = 1.1f;
+#endif
+
+#ifdef USE_PROPORTIONAL_RING_THICKNESS
+#else
 constexpr int c_thickness = 25;
 constexpr int c_retrograde = 1;
 constexpr int c_retrograde_depths = 10;
@@ -296,14 +303,17 @@ void DirectHwndRenderTarget::ReleaseDeviceResources()
 
 struct SunburstMetrics
 {
-    SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds, size_t max_depth)
+    SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds)
     : stroke(FLOAT(dpi.Scale(1)))
     , margin(FLOAT(dpi.Scale(5)))
-    , indicator_thickness(FLOAT(dpi.Scale(4)))
+    , indicator_thickness(dpi.ScaleF(4))
     , center_radius(FLOAT(dpi.Scale(c_centerRadius)))
     , boundary_radius(std::min<FLOAT>(bounds.right - bounds.left, bounds.bottom - bounds.top) / 2 - margin)
     , max_radius(boundary_radius - (margin + indicator_thickness + margin))
     , range_radius(max_radius - center_radius)
+#ifdef USE_MIN_ARC_LENGTH
+    , min_arc(FLOAT(dpi.Scale(3)))
+#endif
 #ifndef USE_PROPORTIONAL_RING_THICKNESS
     , thickness(FLOAT(dpi.Scale(c_thickness)))
     , retrograde(FLOAT(dpi.Scale(c_retrograde)))
@@ -358,6 +368,9 @@ struct SunburstMetrics
     const FLOAT boundary_radius;
     const FLOAT max_radius;
     const FLOAT range_radius;
+#ifdef USE_MIN_ARC_LENGTH
+    const FLOAT min_arc;
+#endif
 
 private:
 #ifdef USE_PROPORTIONAL_RING_THICKNESS
@@ -386,7 +399,11 @@ void Sunburst::Init(const Sunburst& other)
     m_center = other.m_center;
 }
 
+#ifdef USE_MIN_ARC_LENGTH
+void Sunburst::MakeArc(std::vector<Arc>& arcs, FLOAT outer_radius, const FLOAT min_arc, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert)
+#else
 void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert)
+#endif
 {
     const bool zero = (total == 0.0f);
     Arc arc;
@@ -400,10 +417,14 @@ void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node
     assert(arc.m_end - arc.m_start <= span);
 #endif
 
-// TODO: Base it on a percentage of total size when multiple roots are present?
-// TODO: Unclear what to do when only there's only one root and it isn't a drive...
-// NOTE: The problem is the async scan can cause the max depth to jitter, which rescales the whole chart.
+// NOTE: USE_PROPORTIONAL_RING_THICKNESS interacts poorly with this.  The
+// async scan can cause the max depth to jitter, which rescales the whole
+// chart, and the arc filtering mechanisms can vacillate disorientingly.
+#ifdef USE_MIN_ARC_LENGTH
+    if (ArcLength(arc.m_end - arc.m_start, outer_radius) >= min_arc)
+#else
     if (arc.m_end - arc.m_start >= c_minAngle)
+#endif
     {
         arc.m_node = node;
         arcs.emplace_back(std::move(arc));
@@ -412,6 +433,10 @@ void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node
 
 void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 {
+#ifdef USE_MIN_ARC_LENGTH
+    SunburstMetrics mx(m_dpi, m_bounds);
+#endif
+
     const std::vector<std::shared_ptr<DirNode>> roots = _roots;
 
     std::vector<double> totals; // Total space (used + free); when FreeSpaceNode is present it's total hardware space.
@@ -473,6 +498,10 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 
     std::vector<Arc>& arcs = m_rings.back();
 
+#ifdef USE_MIN_ARC_LENGTH
+    FLOAT outer_radius = mx.center_radius + mx.get_thickness(0);
+#endif
+
     for (size_t ii = 0; ii < roots.size(); ++ii)
     {
         std::shared_ptr<DirNode> root = roots[ii];
@@ -488,9 +517,9 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 
         double sweep = 0;
         for (const auto dir : dirs)
-            MakeArc(arcs, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, consumed, start, span, convert);
+            MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, consumed, start, span, convert);
         for (const auto file : files)
-            MakeArc(arcs, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, consumed, start, span, convert);
+            MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, consumed, start, span, convert);
         if (free)
         {
             Arc arc;
@@ -505,7 +534,11 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 
     while (m_rings.size() <= 20)
     {
-        std::vector<Arc> arcs = NextRing(m_rings.back());
+#ifdef USE_MIN_ARC_LENGTH
+        outer_radius += mx.get_thickness(m_rings.size() + 1);
+#endif
+
+        std::vector<Arc> arcs = NextRing(m_rings.back() _PASS_MIN_ARC_LENGTH);
         if (arcs.empty())
             break;
         m_rings.emplace_back(std::move(arcs));
@@ -524,7 +557,11 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 #endif
 }
 
+#ifdef USE_MIN_ARC_LENGTH
+std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_ring, const FLOAT outer_radius, const FLOAT min_arc)
+#else
 std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_ring)
+#endif
 {
     std::vector<Arc> arcs;
 
@@ -547,9 +584,9 @@ std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_rin
 
             const double range = double(parent->GetSize());
             for (const auto dir : dirs)
-                MakeArc(arcs, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, range, start, span);
+                MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, range, start, span);
             for (const auto file : files)
-                MakeArc(arcs, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, range, start, span);
+                MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, range, start, span);
 
 #ifdef DEBUG
             if (arcs.size() > index)
@@ -699,7 +736,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
         rect, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.35f);
     pTarget->CreateLayer(&pFileLayer);
 
-    SunburstMetrics mx(m_dpi, m_bounds, m_rings.size());
+    SunburstMetrics mx(m_dpi, m_bounds);
 
     ID2D1SolidColorBrush* pLineBrush = target.LineBrush();
     ID2D1SolidColorBrush* pFillBrush = target.FillBrush();
@@ -891,7 +928,7 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
     const FLOAT ydelta = (pt.y - m_center.y);
     const FLOAT radius = sqrt((xdelta * xdelta) + (ydelta * ydelta));
 
-    SunburstMetrics mx(m_dpi, m_bounds, m_rings.size());
+    SunburstMetrics mx(m_dpi, m_bounds);
 
     const bool use_parent = (radius <= mx.center_radius);
     if (use_parent)

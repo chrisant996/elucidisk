@@ -58,8 +58,13 @@ public:
 protected:
     static D2D1_COLOR_F     MakeColor(const Arc& arc, size_t depth, bool highlight);
     static D2D1_COLOR_F     MakeRootColor(bool highlight, bool free);
+#ifdef USE_MIN_ARC_LENGTH
+    static void             MakeArc(std::vector<Arc>& arcs, FLOAT outer_radius, FLOAT min_arc, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert=1.0f);
+    std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring, FLOAT outer_radius, FLOAT min_arc);
+#else
     static void             MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert=1.0f);
     std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring);
+#endif
     bool                    MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, FLOAT inner_radius, FLOAT outer_radius, ID2D1Geometry** ppGeometry);
 
 private:
