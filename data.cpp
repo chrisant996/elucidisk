@@ -61,6 +61,15 @@ std::shared_ptr<DirNode> DirNode::AddDir(const WCHAR* name)
         std::lock_guard<std::mutex> lock(m_mutex);
 
         m_dirs.emplace_back(dir);
+
+        m_count_dirs++;
+
+        DirNode* parent(m_parent.get());
+        while (parent)
+        {
+            parent->m_count_dirs++;
+            parent = parent->m_parent.get();
+        }
     }
 
     return dir;
@@ -120,6 +129,7 @@ void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
                 while (parent)
                 {
                     parent->m_size -= dir->GetSize();
+                    parent->m_count_dirs -= dir->CountDirs();
                     parent->m_count_files -= dir->CountFiles();
                     parent = parent->m_parent.get();
                 }

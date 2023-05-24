@@ -398,6 +398,12 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
 // TODO: Right justify count, left justify label.
             swprintf_s(sz, _countof(sz), TEXT("%llu Files"), node->AsDir()->CountFiles());
             ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
+
+            OffsetRect(&rcLine, 0, tm.tmHeight);
+
+// TODO: Right justify count, left justify label.
+            swprintf_s(sz, _countof(sz), TEXT("%llu Dirs"), node->AsDir()->CountDirs());
+            ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
         }
     }
 }

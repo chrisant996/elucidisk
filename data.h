@@ -45,6 +45,7 @@ public:
                             DirNode(const WCHAR* name, const std::shared_ptr<DirNode>& parent) : Node(name, parent) {}
     DirNode*                AsDir() override { return this; }
     const DirNode*          AsDir() const override { return this; }
+    ULONGLONG               CountDirs() const { return m_count_dirs; }
     ULONGLONG               CountFiles() const { return m_count_files; }
     std::vector<std::shared_ptr<DirNode>> CopyDirs() const;
     std::vector<std::shared_ptr<FileNode>> CopyFiles() const;
@@ -63,6 +64,7 @@ private:
     std::vector<std::shared_ptr<DirNode>> m_dirs;
     std::vector<std::shared_ptr<FileNode>> m_files;
     std::shared_ptr<FreeSpaceNode> m_free; // TODO: Only needed on a RootDirNode.
+    ULONGLONG               m_count_dirs = 0;
     ULONGLONG               m_count_files = 0;
     ULONGLONG               m_size = 0;
     bool                    m_finished = false;
