@@ -27,8 +27,9 @@ static void build_full_path(std::wstring& path, const Node* node)
     else
     {
         build_full_path(path, node->GetParent().get());
-        ensure_separator(path);
         path.append(node->GetName());
+        if (node->AsDir())
+            ensure_separator(path);
     }
 }
 
