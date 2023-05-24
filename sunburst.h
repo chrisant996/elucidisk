@@ -47,6 +47,8 @@ class Sunburst
         std::shared_ptr<Node> m_node;
     };
 
+    enum class UnitScale { KB, MB, GB };
+
 public:
                             Sunburst();
                             ~Sunburst();
@@ -54,6 +56,7 @@ public:
     void                    Init(const Sunburst& other);
     void                    BuildRings(const std::vector<std::shared_ptr<DirNode>>& roots);
     void                    RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& rect, const std::shared_ptr<Node>& highlight);
+    void                    FormatSize(ULONGLONG size, std::wstring& text, std::wstring& units, int places);
     std::shared_ptr<Node>   HitTest(POINT pt);
     void                    OnDpiChanged(const DpiScaler& dpi);
 
@@ -73,6 +76,7 @@ private:
     DpiScaler               m_dpi;
     D2D1_RECT_F             m_bounds;
     D2D1_POINT_2F           m_center;
+    UnitScale               m_units = UnitScale::MB;
 
     std::vector<std::shared_ptr<DirNode>> m_roots;
     std::vector<std::vector<Arc>> m_rings;

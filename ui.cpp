@@ -366,25 +366,39 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
         OffsetRect(&rcLine, 0, tm.tmHeight + padding);
         rcLine.right = rcLine.left + m_dpi.Scale(100);
 
-        WCHAR sz[100];
+        std::wstring text;
+        std::wstring units;
+        ULONGLONG size = 0;
+        bool has_size = true;
 
-        sz[0] = 0;
         if (node->AsDir())
-            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsDir()->GetSize()) / 1024 / 1024);
+            size = node->AsDir()->GetSize();
         else if (node->AsFile())
-            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsFile()->GetSize()) / 1024 / 1024);
+            size = node->AsFile()->GetSize();
         else if (node->AsFreeSpace())
-            swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsFreeSpace()->GetFreeSize()) / 1024 / 1024);
-        ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
+            size = node->AsFreeSpace()->GetFreeSize();
+        else
+            has_size = false;
+
+        if (has_size)
+        {
+            m_sunburst.FormatSize(size, text, units, 3);
+// TODO: Right justify size, left justify units label.
+            text.append(TEXT(" "));
+            text.append(units);
+            ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, text.c_str(), int(text.length()), nullptr);
+        }
 
         OffsetRect(&rcLine, 0, tm.tmHeight);
 
-        sz[0] = 0;
         if (node->AsDir())
         {
+            WCHAR sz[100];
+
+// TODO: Right justify count, left justify label.
             swprintf_s(sz, _countof(sz), TEXT("%llu Files"), node->AsDir()->CountFiles());
+            ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
         }
-        ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
     }
 }
 
@@ -500,21 +514,25 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 for (const auto root : m_roots)
                     used += root->GetSize();
 
-                WCHAR sz[100];
-                swprintf_s(sz, _countof(sz), TEXT("%.1f GB"), double(used) / 1024 / 1024 / 1024);
+                std::wstring text;
+                std::wstring units;
+                m_sunburst.FormatSize(used, text, units, 1);
+                text.append(TEXT(" "));
+                text.append(units);
 
                 SIZE size;
-                GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
+                GetTextExtentPoint32(ps.hdc, text.c_str(), int(text.length()), &size);
 
                 rcClient.top += margin_reserve + top_reserve;
                 const LONG xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
                 const LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
                 SetBkMode(ps.hdc, TRANSPARENT);
-                ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+                ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
 
 #ifdef DEBUG
                 static int s_counter = 0;
                 s_counter++;
+                WCHAR sz[100];
                 swprintf_s(sz, _countof(sz), TEXT("%u"), s_counter);
                 GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
                 ExtTextOut(ps.hdc, rcClient.right - margin_reserve - size.cx, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);

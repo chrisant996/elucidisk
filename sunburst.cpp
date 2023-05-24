@@ -480,6 +480,13 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             grand_total += totals.back();
         }
 
+        if (grand_total < ULONGLONG(10) * 1024 * 1024)
+            m_units = UnitScale::KB;
+        else if (grand_total < ULONGLONG(10) * 1024 * 1024 * 1024)
+            m_units = UnitScale::MB;
+        else
+            m_units = UnitScale::GB;
+
         double sweep = 0;
         for (size_t ii = 0; ii < roots.size(); ++ii)
         {
@@ -936,6 +943,34 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
     }
 
     ReleaseI(pFileLayer);
+}
+
+void Sunburst::FormatSize(const ULONGLONG _size, std::wstring& text, std::wstring& units, int places)
+{
+    WCHAR sz[100];
+    double size = double(_size);
+
+    switch (m_units)
+    {
+    case UnitScale::KB:
+        units = TEXT("KB");
+        size /= 1024;
+        break;
+    case UnitScale::MB:
+        units = TEXT("MB");
+        size /= 1024;
+        size /= 1024;
+        break;
+    default:
+        units = TEXT("GB");
+        size /= 1024;
+        size /= 1024;
+        size /= 1024;
+        break;
+    }
+
+    swprintf_s(sz, _countof(sz), TEXT("%.*f"), places, size);
+    text = sz;
 }
 
 std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
