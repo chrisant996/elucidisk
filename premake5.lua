@@ -241,9 +241,7 @@ newaction {
         exec("git checkout " .. (_OPTIONS["commit"] or "HEAD"))
 
         -- Build the code.
-        local x86_ok = true
         local x64_ok = true
-        local arm64_ok = true
         local toolchain = "ERROR"
         local build_code = function (target)
             if have_msbuild then
@@ -253,7 +251,6 @@ newaction {
                 exec(premake .. " " .. toolchain)
                 os.chdir(".build/" .. toolchain)
 
-                x86_ok = exec(have_msbuild .. " /m /v:q /p:configuration=release /p:platform=win32 elucidisk.sln /t:" .. target)
                 x64_ok = exec(have_msbuild .. " /m /v:q /p:configuration=release /p:platform=x64 elucidisk.sln /t:" .. target)
 
                 os.chdir("../..")
@@ -268,7 +265,7 @@ newaction {
         local src = path.getabsolute(".build/" .. toolchain .. "/bin/release").."/"
 
         -- Do a coarse check to make sure there's a build available.
-        if not os.isdir(src .. ".") or not (x86_ok or x64_ok) then
+        if not os.isdir(src .. ".") or not x64_ok then
             error("There's no build available in '" .. src .. "'")
         end
 
@@ -294,7 +291,7 @@ newaction {
             error("Failed to get version info")
         end
         local version = vmaj .. "." .. vmin .. "." .. vpat
-        
+
         -- Now we know the version we can create our output directory.
         local target_dir = root_dir .. os.date("%Y%m%d_%H%M%S") .. "_" .. version .. "/"
         rmdir(target_dir)
