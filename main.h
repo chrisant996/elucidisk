@@ -8,6 +8,8 @@
 #include <commctrl.h>
 #include "dpi.h"
 
+#define USE_RAINBOW
+
 template<class T>
 void ReleaseI(T*& p)
 {

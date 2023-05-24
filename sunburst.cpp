@@ -263,6 +263,10 @@ LError:
     if (FAILED(hr))
         goto LError;
 
+    hr = m_pTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.75f), &m_pFileLineBrush);
+    if (FAILED(hr))
+        goto LError;
+
     hr = m_pTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_pFillBrush);
     if (FAILED(hr))
         goto LError;
@@ -292,6 +296,7 @@ HRESULT DirectHwndRenderTarget::ResizeDeviceResources()
 void DirectHwndRenderTarget::ReleaseDeviceResources()
 {
     ReleaseI(m_pLineBrush);
+    ReleaseI(m_pFileLineBrush);
     ReleaseI(m_pFillBrush);
     ReleaseI(m_pTarget);
     ReleaseI(m_pFactory);
@@ -636,6 +641,7 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     else if (arc.m_node->AsDir() && arc.m_node->AsDir()->Hidden())
         return D2D1::ColorF(0xB8B8B8);
 
+#ifdef USE_RAINBOW
     const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
 
 // TODO: Dark theme.
@@ -653,6 +659,9 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     color.a = 1.0f;
 
     return color;
+#else
+    return D2D1::ColorF(highlight ? 0x3078F8 : 0x6495ED);
+#endif
 }
 
 D2D1_COLOR_F Sunburst::MakeRootColor(bool highlight, bool free)
@@ -733,12 +742,13 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
 
     ID2D1Layer* pFileLayer = nullptr;
     D2D1_LAYER_PARAMETERS fileLayerParams = D2D1::LayerParameters(
-        rect, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.35f);
+        rect, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.60f);
     pTarget->CreateLayer(&pFileLayer);
 
     SunburstMetrics mx(m_dpi, m_bounds);
 
     ID2D1SolidColorBrush* pLineBrush = target.LineBrush();
+    ID2D1SolidColorBrush* pFileLineBrush = target.FileLineBrush();
     ID2D1SolidColorBrush* pFillBrush = target.FillBrush();
 
     // Outer boundary outline.
@@ -861,7 +871,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
                     pTarget->PushLayer(fileLayerParams, pFileLayer);
 
                 pTarget->FillGeometry(pGeometry, pFillBrush);
-                pTarget->DrawGeometry(pGeometry, pLineBrush, mx.stroke);
+                pTarget->DrawGeometry(pGeometry, isFile ? pFileLineBrush : pLineBrush, mx.stroke);
 
                 if (isHighlight)
                 {

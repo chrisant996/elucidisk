@@ -26,6 +26,7 @@ public:
     ID2D1RenderTarget*      Target() const { return m_pTarget; }
 
     ID2D1SolidColorBrush*   LineBrush() const { return m_pLineBrush; }
+    ID2D1SolidColorBrush*   FileLineBrush() const { return m_pFileLineBrush; }
     ID2D1SolidColorBrush*   FillBrush() const { return m_pFillBrush; }
 
 private:
@@ -33,6 +34,7 @@ private:
     ID2D1Factory*           m_pFactory = nullptr;
     ID2D1HwndRenderTarget*  m_pTarget = nullptr;
     ID2D1SolidColorBrush*   m_pLineBrush = nullptr;
+    ID2D1SolidColorBrush*   m_pFileLineBrush = nullptr;
     ID2D1SolidColorBrush*   m_pFillBrush = nullptr;
 };
 
