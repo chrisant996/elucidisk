@@ -192,6 +192,7 @@ private:
     const HINSTANCE         m_hinst;
     HFONT                   m_hfont = 0;
     DpiScaler               m_dpi;
+    LONG                    m_cxNumberArea = 0;
     bool                    m_inWmDpiChanged = false;
 
     std::recursive_mutex    m_ui_mutex; // Synchronize m_scanner vs m_sunburst.
@@ -368,6 +369,7 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
 
         std::wstring text;
         std::wstring units;
+        SIZE textSize;
         ULONGLONG size = 0;
         bool has_size = true;
 
@@ -382,28 +384,26 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
 
         if (has_size)
         {
-            m_sunburst.FormatSize(size, text, units, 3);
-// TODO: Right justify size, left justify units label.
+            m_sunburst.FormatSize(size, text, units);
+            GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
             text.append(TEXT(" "));
             text.append(units);
-            ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, text.c_str(), int(text.length()), nullptr);
+            ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
         }
-
-        OffsetRect(&rcLine, 0, tm.tmHeight);
 
         if (node->AsDir())
         {
-            WCHAR sz[100];
-
-// TODO: Right justify count, left justify label.
-            swprintf_s(sz, _countof(sz), TEXT("%llu Files"), node->AsDir()->CountFiles());
-            ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
-
+            m_sunburst.FormatCount(node->AsDir()->CountFiles(), text);
+            GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
+            text.append(TEXT(" Files"));
             OffsetRect(&rcLine, 0, tm.tmHeight);
+            ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
 
-// TODO: Right justify count, left justify label.
-            swprintf_s(sz, _countof(sz), TEXT("%llu Dirs"), node->AsDir()->CountDirs());
-            ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
+            m_sunburst.FormatCount(node->AsDir()->CountDirs(), text);
+            GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
+            text.append(TEXT(" Dirs"));
+            OffsetRect(&rcLine, 0, tm.tmHeight);
+            ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
         }
     }
 }
@@ -522,7 +522,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
                 std::wstring text;
                 std::wstring units;
-                m_sunburst.FormatSize(used, text, units, 1);
+                m_sunburst.FormatSize(used, text, units);
                 text.append(TEXT(" "));
                 text.append(units);
 
@@ -756,6 +756,28 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
     if (m_hfont)
         DeleteFont(m_hfont);
     m_hfont = MakeFont(dpi);
+
+    {
+        SIZE size;
+        HDC hdc = GetDC(m_hwnd);
+        SaveDC(hdc);
+        SelectFont(hdc, m_hfont);
+
+        LONG cxMax = 0;
+        for (WCHAR ch = '0'; ch <= '9'; ++ch)
+        {
+            GetTextExtentPoint32(hdc, &ch, 1, &size);
+            if (cxMax < size.cx)
+                cxMax = size.cx;
+        }
+        m_cxNumberArea = 9 * cxMax;
+
+        GetTextExtentPoint32(hdc, TEXT(",,."), 3, &size);
+        m_cxNumberArea += size.cx;
+
+        RestoreDC(hdc, -1);
+        ReleaseDC(m_hwnd, hdc);
+    }
 
 #if 0
     const WORD realDpi = __GetDpiForWindow(m_hwnd);

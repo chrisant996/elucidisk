@@ -969,8 +969,42 @@ void Sunburst::FormatSize(const ULONGLONG _size, std::wstring& text, std::wstrin
         break;
     }
 
+    if (places < 0)
+    {
+        if (size >= 100.0f)
+            places = 0;
+        else if (size >= 10.0f)
+            places = 1;
+        else if (size >= 1.0f)
+            places = 2;
+        else
+            places = 3;
+    }
+
     swprintf_s(sz, _countof(sz), TEXT("%.*f"), places, size);
     text = sz;
+}
+
+void Sunburst::FormatCount(const ULONGLONG count, std::wstring& text)
+{
+    WCHAR sz[100];
+    swprintf_s(sz, _countof(sz), TEXT("%llu"), count);
+
+    WCHAR* commas = sz + _countof(sz);
+    *(--commas) = '\0';
+
+    size_t ii = wcslen(sz);
+    for (int count = 0; ii--; ++count)
+    {
+        if (count == 3)
+        {
+            count = 0;
+            *(--commas) = ',';
+        }
+        *(--commas) = sz[ii];
+    }
+
+    text = commas;
 }
 
 std::shared_ptr<Node> Sunburst::HitTest(POINT pt)

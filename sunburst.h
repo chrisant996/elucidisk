@@ -56,7 +56,8 @@ public:
     void                    Init(const Sunburst& other);
     void                    BuildRings(const std::vector<std::shared_ptr<DirNode>>& roots);
     void                    RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& rect, const std::shared_ptr<Node>& highlight);
-    void                    FormatSize(ULONGLONG size, std::wstring& text, std::wstring& units, int places);
+    void                    FormatSize(ULONGLONG size, std::wstring& text, std::wstring& units, int places=-1);
+    void                    FormatCount(ULONGLONG count, std::wstring& text);
     std::shared_ptr<Node>   HitTest(POINT pt);
     void                    OnDpiChanged(const DpiScaler& dpi);
 
