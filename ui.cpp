@@ -490,7 +490,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         }
         break;
 
-// TODO: WM_MOUSEENTER and WM_MOUSELEAVE.
     case WM_MOUSEMOVE:
         {
             POINT pt;
@@ -502,7 +501,20 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
             if (hover != m_hover_node)
                 InvalidateRect(m_hwnd, nullptr, false);
+
+            if (hover)
+            {
+                TRACKMOUSEEVENT track = { sizeof(track) };
+                track.dwFlags = TME_LEAVE;
+                track.hwndTrack = m_hwnd;
+                track.dwHoverTime = HOVER_DEFAULT;
+                _TrackMouseEvent(&track);
+            }
         }
+        break;
+    case WM_MOUSELEAVE:
+        m_hover_node.reset();
+        InvalidateRect(m_hwnd, nullptr, false);
         break;
 
     case WM_TIMER:
