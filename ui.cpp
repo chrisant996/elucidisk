@@ -471,10 +471,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 for (const auto root : m_roots)
                     used += root->GetSize();
 
-                static int s_counter = 0;
                 WCHAR sz[100];
-                s_counter++;
-                swprintf_s(sz, _countof(sz), TEXT("%.1f GB - %u"), double(used) / 1024 / 1024 / 1024, s_counter);
+                swprintf_s(sz, _countof(sz), TEXT("%.1f GB"), double(used) / 1024 / 1024 / 1024);
 
                 SIZE size;
                 GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
@@ -484,6 +482,14 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 const LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
                 SetBkMode(ps.hdc, TRANSPARENT);
                 ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+
+#ifdef DEBUG
+                static int s_counter = 0;
+                s_counter++;
+                swprintf_s(sz, _countof(sz), TEXT("%u"), s_counter);
+                GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
+                ExtTextOut(ps.hdc, rcClient.right - margin_reserve - size.cx, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+#endif
             }
 
             RestoreDC(ps.hdc, -1);
