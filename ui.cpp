@@ -26,6 +26,7 @@ public:
     void                    Stop();
 
     bool                    IsComplete();
+    void                    GetScanningPath(std::wstring& out);
 
 protected:
     static void             ThreadProc(ScannerThread* pThis);
@@ -35,6 +36,7 @@ private:
     HANDLE                  m_hStop;
     volatile LONG           m_generation = 0;
     size_t                  m_cursor = 0;
+    std::shared_ptr<Node>   m_current;
     std::vector<std::shared_ptr<DirNode>> m_roots;
     std::unique_ptr<std::thread> m_thread;
     std::mutex              m_mutex;
@@ -72,6 +74,7 @@ std::vector<std::shared_ptr<DirNode>> ScannerThread::Start(int argc, const WCHAR
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
+        m_current.reset();
         m_roots = roots;
         m_cursor = 0;
         InterlockedIncrement(&m_generation);
@@ -89,6 +92,7 @@ void ScannerThread::Stop()
         SetEvent(m_hStop);
         InterlockedIncrement(&m_generation);
         m_thread->join();
+        m_current.reset();
         m_roots.clear();
         m_cursor = 0;
         ResetEvent(m_hStop);
@@ -99,6 +103,16 @@ bool ScannerThread::IsComplete()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_roots.empty();
+}
+
+void ScannerThread::GetScanningPath(std::wstring& out)
+{
+    std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
+
+    if (m_current)
+        m_current->GetFullPath(out);
+    else
+        out.clear();
 }
 
 void ScannerThread::ThreadProc(ScannerThread* pThis)
@@ -132,7 +146,8 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
                 root = pThis->m_roots[pThis->m_cursor++];
             }
 
-            Scan(root, generation, &pThis->m_generation, pThis->m_ui_mutex);
+            ScanFeedback feedback = { pThis->m_ui_mutex, pThis->m_current };
+            Scan(root, generation, &pThis->m_generation, feedback);
         }
     }
 }
@@ -329,34 +344,48 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
     InflateRect(&rcLine, -padding, 0);
     rcLine.bottom = rcLine.top + tm.tmHeight;
 
-    node->GetFullPath(text);
-    DrawText(hdc, text.c_str(), int(text.length()), &rcLine, DT_LEFT|DT_NOCLIP|DT_NOPREFIX|DT_PATH_ELLIPSIS|DT_SINGLELINE|DT_TOP);
-
-    OffsetRect(&rcLine, 0, tm.tmHeight + padding);
-    rcLine.right = rcLine.left + m_dpi.Scale(100);
-
-    WCHAR sz[100];
-
-    sz[0] = 0;
     if (node)
     {
+        node->GetFullPath(text);
+    }
+    else if (!m_scanner.IsComplete())
+    {
+        std::wstring path;
+        m_scanner.GetScanningPath(path);
+        if (!path.empty())
+        {
+            text.clear();
+            text.append(TEXT("Scanning:  "));
+            text.append(path);
+        }
+    }
+    DrawText(hdc, text.c_str(), int(text.length()), &rcLine, DT_LEFT|DT_NOCLIP|DT_NOPREFIX|DT_PATH_ELLIPSIS|DT_SINGLELINE|DT_TOP);
+
+    if (node)
+    {
+        OffsetRect(&rcLine, 0, tm.tmHeight + padding);
+        rcLine.right = rcLine.left + m_dpi.Scale(100);
+
+        WCHAR sz[100];
+
+        sz[0] = 0;
         if (node->AsDir())
             swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsDir()->GetSize()) / 1024 / 1024);
         else if (node->AsFile())
             swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsFile()->GetSize()) / 1024 / 1024);
         else if (node->AsFreeSpace())
             swprintf_s(sz, _countof(sz), TEXT("%.3f MB"), double(node->AsFreeSpace()->GetFreeSize()) / 1024 / 1024);
-    }
-    ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
+        ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
 
-    OffsetRect(&rcLine, 0, tm.tmHeight);
+        OffsetRect(&rcLine, 0, tm.tmHeight);
 
-    sz[0] = 0;
-    if (node && node->AsDir())
-    {
-        swprintf_s(sz, _countof(sz), TEXT("%llu Files"), node->AsDir()->CountFiles());
+        sz[0] = 0;
+        if (node->AsDir())
+        {
+            swprintf_s(sz, _countof(sz), TEXT("%llu Files"), node->AsDir()->CountFiles());
+        }
+        ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
     }
-    ExtTextOut(hdc, rcLine.left, rcLine.top, ETO_OPAQUE, &rcLine, sz, int(wcslen(sz)), nullptr);
 }
 
 LRESULT CALLBACK MainWindow::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)

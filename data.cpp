@@ -66,7 +66,7 @@ std::shared_ptr<DirNode> DirNode::AddDir(const WCHAR* name)
     return dir;
 }
 
-void DirNode::AddFile(const WCHAR* name, ULONGLONG size)
+std::shared_ptr<FileNode> DirNode::AddFile(const WCHAR* name, ULONGLONG size)
 {
     std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
     std::shared_ptr<FileNode> file = std::make_shared<FileNode>(name, size, parent);
@@ -74,7 +74,7 @@ void DirNode::AddFile(const WCHAR* name, ULONGLONG size)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        m_files.emplace_back(std::move(file));
+        m_files.emplace_back(file);
 
         m_size += size;
         m_count_files++;
@@ -87,6 +87,8 @@ void DirNode::AddFile(const WCHAR* name, ULONGLONG size)
             parent = parent->m_parent.get();
         }
     }
+
+    return file;
 }
 
 void DirNode::AddFreeSpace(ULONGLONG free, ULONGLONG total)

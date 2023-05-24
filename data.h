@@ -53,7 +53,7 @@ public:
     void                    Hide(bool hide=true) { m_hide = hide; }
     bool                    Hidden() const { return m_hide; }
     std::shared_ptr<DirNode> AddDir(const WCHAR* name);
-    void                    AddFile(const WCHAR* name, ULONGLONG size);
+    std::shared_ptr<FileNode> AddFile(const WCHAR* name, ULONGLONG size);
     void                    AddFreeSpace(ULONGLONG free, ULONGLONG total);
     void                    DeleteChild(const std::shared_ptr<Node>& node);
     void                    Finish() { m_finished = true; }

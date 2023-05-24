@@ -3,6 +3,8 @@
 
 #include "main.h"
 #include "data.h"
+#include "scan.h"
+#include <assert.h>
 
 //#define USE_FAKE_DATA
 
@@ -118,7 +120,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
 }
 #endif
 
-void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, volatile LONG* current_generation, std::recursive_mutex& mutex)
+void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, volatile LONG* current_generation, ScanFeedback& feedback)
 {
     std::wstring find;
     root->GetFullPath(find);
@@ -140,9 +142,12 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
     HANDLE hFind = FindFirstFile(find.c_str(), &fd);
     if (hFind != INVALID_HANDLE_VALUE)
     {
+        DWORD tick = GetTickCount();
+        ULONGLONG num = 0;
+
         do
         {
-            std::lock_guard<std::recursive_mutex> lock(mutex);
+            std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
 
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
@@ -150,13 +155,30 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
                     continue;
 
                 dirs.emplace_back(root->AddDir(fd.cFileName));
+                assert(dirs.back());
+
+                if (++num > 50 || GetTickCount() - tick > 50)
+                {
+                    feedback.current = dirs.back();
+LResetFeedbackInterval:
+                    tick = GetTickCount();
+                    num = 0;
+                }
             }
             else
             {
                 ULARGE_INTEGER uli;
                 uli.HighPart = fd.nFileSizeHigh;
                 uli.LowPart = fd.nFileSizeLow;
-                root->AddFile(fd.cFileName, uli.QuadPart);
+
+                std::shared_ptr<FileNode> file = root->AddFile(fd.cFileName, uli.QuadPart);
+                assert(file);
+
+                if (++num > 50 || GetTickCount() - tick > 50)
+                {
+                    feedback.current = file;
+                    goto LResetFeedbackInterval;
+                }
             }
         }
         while (this_generation == *current_generation && FindNextFile(hFind, &fd));
@@ -169,7 +191,7 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
     {
         if (this_generation != *current_generation)
             break;
-        Scan(dir, this_generation, current_generation, mutex);
+        Scan(dir, this_generation, current_generation, feedback);
     }
 
     root->Finish();
