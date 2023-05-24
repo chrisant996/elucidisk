@@ -102,3 +102,49 @@ void DirNode::AddFreeSpace(ULONGLONG free, ULONGLONG total)
     }
 }
 
+void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    if (node->AsDir())
+    {
+        DirNode* dir = node->AsDir();
+        for (auto iter = m_dirs.begin(); iter != m_dirs.end(); ++iter)
+        {
+            if (iter->get() == dir)
+            {
+                DirNode* parent(this);
+                while (parent)
+                {
+                    parent->m_size -= dir->GetSize();
+                    parent->m_count_files -= dir->CountFiles();
+                    parent = parent->m_parent.get();
+                }
+
+                m_dirs.erase(iter);
+                return;
+            }
+        }
+    }
+    else
+    {
+        FileNode* file = node->AsFile();
+        for (auto iter = m_files.begin(); iter != m_files.end(); ++iter)
+        {
+            if (iter->get() == file)
+            {
+                DirNode* parent(this);
+                while (parent)
+                {
+                    parent->m_size -= file->GetSize();
+                    parent->m_count_files--;
+                    parent = parent->m_parent.get();
+                }
+
+                m_files.erase(iter);
+                return;
+            }
+        }
+    }
+}
+

@@ -167,6 +167,7 @@ protected:
     void                    DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node);
 
     void                    Expand(const std::shared_ptr<Node>& node);
+    void                    DeleteNode(const std::shared_ptr<Node>& node);
     void                    Rescan();
 
     static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -558,6 +559,11 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 else
                     break;
 
+                std::wstring path;
+                node->GetFullPath(path);
+                if (path.empty())
+                    break;
+
                 POINT ptScreen = pt;
                 ClientToScreen(m_hwnd, &ptScreen);
 
@@ -567,27 +573,23 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 if (dir)
                     DeleteMenu(hmenuSub, dir->Hidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
 
+// TODO: Delete is NYI.
+                DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
+
                 switch (TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
                 {
                 case IDM_OPEN_DIRECTORY:
-                    if (dir)
-                    {
-// TODO: Open directory.
-                    }
-                    break;
-
                 case IDM_OPEN_FILE:
-                    if (file)
-                    {
-// TODO: Open file.
-                    }
+                    ShellOpen(m_hwnd, path.c_str());
                     break;
 
                 case IDM_RECYCLE_ENTRY:
-// TODO: Recycle.
+                    if (ShellRecycle(m_hwnd, path.c_str()))
+                        DeleteNode(node);
                     break;
                 case IDM_DELETE_ENTRY:
-// TODO: Delete.
+                    if (ShellDelete(m_hwnd, path.c_str()))
+                        DeleteNode(node);
                     break;
 
                 case IDM_HIDE_DIRECTORY:
@@ -721,6 +723,25 @@ LRESULT MainWindow::OnNcDestroy()
     delete this;
     PostQuitMessage(0);
     return 0;
+}
+
+void MainWindow::DeleteNode(const std::shared_ptr<Node>& node)
+{
+    assert(node);
+    if (!node)
+        return;
+
+    const std::shared_ptr<Node> parent = node->GetParent();
+    assert(parent);
+    if (!parent || !parent->AsDir())
+        return;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
+        parent->AsDir()->DeleteChild(node);
+    }
+
+    InvalidateRect(m_hwnd, nullptr, false);
 }
 
 //----------------------------------------------------------------------------

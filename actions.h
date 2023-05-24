@@ -3,5 +3,7 @@
 
 #pragma once
 
-// TODO
+void ShellOpen(HWND hwnd, const WCHAR* path);
+bool ShellRecycle(HWND hwnd, const WCHAR* path);
+bool ShellDelete(HWND hwnd, const WCHAR* path);
 
