@@ -11,6 +11,7 @@ static ID2D1Factory* s_pD2DFactory = nullptr;
 
 constexpr FLOAT M_PI = 3.14159265358979323846f;
 constexpr int c_centerRadius = 50;
+constexpr FLOAT c_rotation = -90.0f;
 
 #ifdef USE_MIN_ARC_LENGTH
 # define _PASS_MIN_ARC_LENGTH   , outer_radius, mx.min_arc
@@ -559,7 +560,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 #ifdef DEBUG
     for (const auto ring : m_rings)
     {
-        float prev = 0;
+        float prev = ring.size() ? ring[0].m_start : 0;
         for (const auto arc : ring)
         {
             assert(arc.m_start >= prev);
@@ -615,14 +616,32 @@ std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_rin
 
 static FLOAT FindAngle(const D2D1_POINT_2F& center, FLOAT x, FLOAT y)
 {
-    if (x == center.x)
-        return (y < center.y) ? 270.0f : 90.0f;
-    if (y == center.y)
-        return (x < center.x) ? 180.0f : 0.0f;
+    FLOAT angle;
 
-    FLOAT angle = atan2((y - center.y), (x - center.x)) * 180.0f / M_PI;
-    if (angle < 0.0f)
-        angle += 360.0f;
+    if (x == center.x)
+    {
+        angle = (y < center.y) ? 270.0f : 90.0f;
+    }
+    else if (y == center.y)
+    {
+        angle = (x < center.x) ? 180.0f : 0.0f;
+    }
+    else
+    {
+        angle = atan2((y - center.y), (x - center.x)) * 180.0f / M_PI;
+        if (angle < 0.0f)
+            angle += 360.0f;
+    }
+
+    if (c_rotation != 0.0f)
+    {
+        angle -= c_rotation;
+        if (angle < 0.0f)
+            angle += 360.0f;
+        else if (angle >= 360.0f)
+            angle -= 360.0f;
+    }
+
     return angle;
 }
 
@@ -686,7 +705,7 @@ D2D1_COLOR_F Sunburst::MakeRootColor(bool highlight, bool free)
         return D2D1::ColorF(free ? 0xD8D8D8 : 0xB0B0B0);
 }
 
-bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, const FLOAT start, FLOAT end, const FLOAT inner_radius, const FLOAT outer_radius, ID2D1Geometry** ppGeometry)
+bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, const FLOAT inner_radius, const FLOAT outer_radius, ID2D1Geometry** ppGeometry)
 {
     // When start and end points of an arc are identical, D2D gets confused
     // where to draw the arc, since it's a full circle.  This compensates.
@@ -695,6 +714,9 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, const FLOAT start
     const bool has_line = (start != end) || (inner_radius > 0.0f);
     if (end <= start)
         end += 360.0f;
+
+    start += c_rotation;
+    end += c_rotation;
 
     const D2D1_ARC_SIZE arcSize = (end - start > 180.0f) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
 
@@ -1047,6 +1069,8 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
                 for (const auto arc : m_rings[depth])
                 {
                     if (arc.m_start <= angle && angle < arc.m_end)
+                        return arc.m_node;
+                    if (arc.m_start <= angle + 360.0f && angle + 360.0f < arc.m_end)
                         return arc.m_node;
                 }
                 break;
