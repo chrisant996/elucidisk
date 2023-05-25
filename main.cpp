@@ -58,3 +58,36 @@ int PASCAL WinMain(
     return int(msg.wParam);
 }
 
+LONG ReadRegLong(const WCHAR* root, const WCHAR* name, LONG default_value)
+{
+    HKEY hkey;
+    LONG ret = default_value;
+
+    if (ERROR_SUCCESS == RegOpenKey(HKEY_CURRENT_USER, root, &hkey))
+    {
+        DWORD type;
+        LONG value;
+        DWORD cb;
+        if (ERROR_SUCCESS == RegQueryValueEx(hkey, name, 0, &type, reinterpret_cast<BYTE*>(&value), &cb) &&
+            type == REG_DWORD &&
+            cb == sizeof(value))
+        {
+            ret = value;
+        }
+        RegCloseKey(hkey);
+    }
+
+    return ret;
+}
+
+void WriteRegLong(const WCHAR* root, const WCHAR* name, LONG value)
+{
+    HKEY hkey;
+
+    if (ERROR_SUCCESS == RegCreateKey(HKEY_CURRENT_USER, root, &hkey))
+    {
+        RegSetValueEx(hkey, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
+        RegCloseKey(hkey);
+    }
+}
+

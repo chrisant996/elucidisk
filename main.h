@@ -18,3 +18,6 @@ void ReleaseI(T*& p)
     p = nullptr;
 }
 
+LONG ReadRegLong(const WCHAR* root, const WCHAR* name, LONG default_value);
+void WriteRegLong(const WCHAR* root, const WCHAR* name, LONG value);
+

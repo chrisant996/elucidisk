@@ -153,6 +153,128 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
 }
 
 //----------------------------------------------------------------------------
+// SizeTracker.
+
+class SizeTracker
+{
+public:
+                            SizeTracker(const WCHAR* keyname, LONG default_cx, LONG default_cy);
+    void                    OnCreate(HWND hwnd);
+    void                    OnSize();
+    void                    OnDestroy();
+
+protected:
+    void                    ReadPosition();
+    void                    WritePosition();
+
+private:
+    std::wstring            m_keyname;
+    HWND                    m_hwnd = 0;
+    bool                    m_resized = false;
+    bool                    m_maximized = false;
+    RECT                    m_rcRestore = {};
+    DpiScaler               m_dpi;
+    const SIZE              m_default_size;
+};
+
+SizeTracker::SizeTracker(const WCHAR* keyname, LONG default_cx, LONG default_cy)
+: m_default_size({ default_cx, default_cy })
+{
+    assert(keyname && *keyname);
+    m_keyname = TEXT("Software\\");
+    m_keyname.append(keyname);
+}
+
+void SizeTracker::OnCreate(HWND hwnd)
+{
+    m_hwnd = hwnd;
+    m_dpi = __GetDpiForWindow(hwnd);
+
+    ReadPosition();
+}
+
+void SizeTracker::OnSize()
+{
+    if (!m_hwnd || IsIconic(m_hwnd))
+        return;
+
+    bool const maximized = !!IsMaximized(m_hwnd);
+    DpiScaler dpi(__GetDpiForWindow(m_hwnd));
+
+    RECT rc;
+    GetWindowRect(m_hwnd, &rc);
+
+    if (!maximized &&
+        (memcmp(&m_rcRestore, &rc, sizeof(m_rcRestore)) || !dpi.IsDpiEqual(m_dpi)))
+    {
+        m_resized = true;
+        m_rcRestore = rc;
+        m_dpi = dpi;
+    }
+
+    if (maximized != m_maximized)
+    {
+        m_resized = true;
+        m_maximized = maximized;
+    }
+}
+
+void SizeTracker::OnDestroy()
+{
+    if (m_resized)
+    {
+        WritePosition();
+        m_resized = false;
+    }
+    m_hwnd = 0;
+}
+
+void SizeTracker::ReadPosition()
+{
+    assert(m_hwnd);
+
+    LONG cx = ReadRegLong(m_keyname.c_str(), TEXT("WindowWidth"), 0);
+    LONG cy = ReadRegLong(m_keyname.c_str(), TEXT("WindowHeight"), 0);
+    const bool maximized = !!ReadRegLong(m_keyname.c_str(), TEXT("Maximized"), false);
+
+    MONITORINFO info = { sizeof(info) };
+    HMONITOR hmon = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTOPRIMARY);
+    GetMonitorInfo(hmon, &info);
+
+    cx = m_dpi.Scale(cx ? cx : m_default_size.cx);
+    cy = m_dpi.Scale(cy ? cy : m_default_size.cy);
+
+    cx = std::min<LONG>(cx, info.rcWork.right - info.rcWork.left);
+    cy = std::min<LONG>(cy, info.rcWork.bottom - info.rcWork.top);
+    cx = std::max<LONG>(cx, m_dpi.Scale(320));
+    cy = std::max<LONG>(cy, m_dpi.Scale(320));
+
+    const LONG xx = info.rcWork.left + ((info.rcWork.right - info.rcWork.left) - cx) / 2;
+    const LONG yy = info.rcWork.top + ((info.rcWork.bottom - info.rcWork.top) - cy) / 2;
+
+    SetWindowPos(m_hwnd, 0, xx, yy, cx, cy, SWP_NOZORDER);
+    GetWindowRect(m_hwnd, &m_rcRestore);
+
+    ShowWindow(m_hwnd, maximized ? SW_MAXIMIZE : SW_NORMAL);
+
+    m_resized = false;
+}
+
+void SizeTracker::WritePosition()
+{
+    assert(m_hwnd);
+
+    const LONG cx = m_dpi.ScaleTo(m_rcRestore.right - m_rcRestore.left, 96);
+    const LONG cy = m_dpi.ScaleTo(m_rcRestore.bottom - m_rcRestore.top, 96);
+
+    WriteRegLong(m_keyname.c_str(), TEXT("WindowWidth"), cx);
+    WriteRegLong(m_keyname.c_str(), TEXT("WindowHeight"), cy);
+    WriteRegLong(m_keyname.c_str(), TEXT("Maximized"), m_maximized);
+
+    m_resized = false;
+}
+
+//----------------------------------------------------------------------------
 // MainWindow.
 
 class MainWindow
@@ -192,6 +314,7 @@ private:
     const HINSTANCE         m_hinst;
     HFONT                   m_hfont = 0;
     DpiScaler               m_dpi;
+    SizeTracker             m_sizeTracker;
     LONG                    m_cxNumberArea = 0;
     bool                    m_inWmDpiChanged = false;
 
@@ -222,6 +345,7 @@ static HFONT MakeFont(const DpiScaler& dpi)
 
 MainWindow::MainWindow(HINSTANCE hinst)
 : m_hinst(hinst)
+, m_sizeTracker(TEXT("Elucidisk"), 800, 600)
 , m_scanner(m_ui_mutex)
 {
 }
@@ -253,22 +377,7 @@ HWND MainWindow::Create()
     if (hwnd)
     {
         OnDpiChanged(DpiScaler(__GetDpiForWindow(hwnd)));
-
-        RECT rcDesk;
-        SystemParametersInfo(SPI_GETWORKAREA, 0, &rcDesk, 0);
-
-        const LONG cxWork = rcDesk.right - rcDesk.left;
-        const LONG cyWork = rcDesk.bottom - rcDesk.top;
-
-// TODO: Remember previous size.
-        const LONG cx = m_dpi.Scale(std::max<int>(320, cxWork / 2));
-        const LONG cy = m_dpi.Scale(std::max<int>(320, cyWork / 2));
-
-        const LONG xx = rcDesk.left + (cxWork - cx) / 2;
-        const LONG yy = rcDesk.top + (cyWork - cy) / 2;
-        SetWindowPos(hwnd, 0, xx, yy, cx, cy, SWP_NOZORDER);
-
-        ShowWindow(hwnd, SW_SHOW);
+        m_sizeTracker.OnCreate(hwnd);
     }
 
     return hwnd;
@@ -674,10 +783,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         }
         break;
 
-    case WM_CREATE:
-// TODO: SendMessage(WM_SETICON, true, LPARAM(LoadImage(IDI_MAINICON, IMAGE_ICON)));
-// TODO: SendMessage(WM_SETICON, false, LPARAM(LoadImage(IDI_MAINICON, IMAGE_ICON, 16, 16)));
-        m_directRender.CreateDeviceResources(m_hwnd);
+    case WM_WINDOWPOSCHANGED:
+        m_sizeTracker.OnSize();
         goto LDefault;
 
     case WM_SIZE:
@@ -736,6 +843,12 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         }
         break;
 
+    case WM_CREATE:
+// TODO: SendMessage(WM_SETICON, true, LPARAM(LoadImage(IDI_MAINICON, IMAGE_ICON)));
+// TODO: SendMessage(WM_SETICON, false, LPARAM(LoadImage(IDI_MAINICON, IMAGE_ICON, 16, 16)));
+        m_directRender.CreateDeviceResources(m_hwnd);
+        goto LDefault;
+
     default:
 LDefault:
         return DefWindowProc(m_hwnd, msg, wParam, lParam);
@@ -789,6 +902,7 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
 
 LRESULT MainWindow::OnDestroy()
 {
+    m_sizeTracker.OnDestroy();
     m_directRender.ReleaseDeviceResources();
     if (m_hfont)
     {
