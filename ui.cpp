@@ -696,8 +696,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             Rescan();
             break;
         case VK_UP:
-            if (m_roots.size() == 1 && m_roots[0]->GetParent())
-                Expand(m_roots[0]->GetParent());
+            if (m_roots.size() == 1)
+                Expand(m_roots[0]);
             break;
         default:
             goto LDefault;
