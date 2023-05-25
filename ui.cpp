@@ -301,7 +301,7 @@ protected:
     LRESULT                 OnDestroy();
     LRESULT                 OnNcDestroy();
 
-    void                    DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node);
+    void                    DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node, bool free_space);
 
     void                    Expand(const std::shared_ptr<Node>& node);
     void                    DeleteNode(const std::shared_ptr<Node>& node);
@@ -329,6 +329,7 @@ private:
     Sunburst                m_sunburst;
 
     std::shared_ptr<Node>   m_hover_node;
+    bool                    m_hover_free = false;
 
     MainWindow(const MainWindow&) = delete;
     const MainWindow& operator=(const MainWindow&) = delete;
@@ -438,7 +439,7 @@ void MainWindow::Rescan()
     Scan(int(paths.size()), paths.data(), true/*rescan*/);
 }
 
-void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node)
+void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node, const bool is_free)
 {
     TEXTMETRIC tm;
     RECT rcLine = rc;
@@ -451,22 +452,46 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
     GetTextMetrics(hdc, &tm);
 
     const int padding = m_dpi.Scale(4);
+    bool show_free = false;
 
     InflateRect(&rcLine, -padding, 0);
     rcLine.bottom = rcLine.top + tm.tmHeight;
 
     if (node)
     {
-        node->GetFullPath(text);
+        std::wstring path;
+        node->GetFullPath(path);
+        if (node->AsDir() && node->AsDir()->GetFreeSpace())
+        {
+            text.append(is_free ? TEXT("Free on ") : TEXT("Used on "));
+            show_free = is_free;
+        }
+        text.append(path);
     }
-    else if (!m_scanner.IsComplete())
+    else if (m_scanner.IsComplete())
+    {
+        if (m_roots.size() > 0)
+        {
+            std::wstring path;
+            text.clear();
+            text.append(TEXT("Scan of "));
+            for (size_t ii = 0; ii < m_roots.size(); ++ii)
+            {
+                if (ii)
+                    text.append(TEXT(" , "));
+                m_roots[ii]->GetFullPath(path);
+                text.append(path);
+            }
+        }
+    }
+    else
     {
         std::wstring path;
         m_scanner.GetScanningPath(path);
         if (!path.empty())
         {
             text.clear();
-            text.append(TEXT("Scanning:  "));
+            text.append(TEXT("Scanning "));
             text.append(path);
         }
     }
@@ -484,7 +509,7 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
         bool has_size = true;
 
         if (node->AsDir())
-            size = node->AsDir()->GetSize();
+            size = show_free ? node->AsDir()->GetFreeSpace()->GetFreeSize(): node->AsDir()->GetSize();
         else if (node->AsFile())
             size = node->AsFile()->GetSize();
         else if (node->AsFreeSpace())
@@ -501,7 +526,7 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
             ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
         }
 
-        if (node->AsDir())
+        if (node->AsDir() && !show_free)
         {
             m_sunburst.FormatCount(node->AsDir()->CountFiles(), text);
             GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
@@ -607,14 +632,19 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 // TODO: Only rebuild rings when something has changed.
                     sunburst.BuildRings(m_roots);
-                    m_hover_node = sunburst.HitTest(pt);
+                    m_hover_node = sunburst.HitTest(pt, &m_hover_free);
                     sunburst.RenderRings(m_directRender, m_hover_node);
                 }
 
                 if (gen == s_gen)
+                {
                     m_sunburst = std::move(sunburst);
+                }
                 else
+                {
                     m_hover_node.reset();
+                    m_hover_free = false;
+                }
 
                 if (FAILED(pTarget->EndDraw()))
                     m_directRender.ReleaseDeviceResources();
@@ -626,7 +656,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
             if (m_hfont)
             {
-                DrawNodeInfo(ps.hdc, rcClient, m_hover_node);
+                DrawNodeInfo(ps.hdc, rcClient, m_hover_node, m_hover_free);
 
 #ifdef DEBUG
                 {
@@ -674,7 +704,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             ScreenToClient(m_hwnd, &pt);
 
             std::shared_ptr<Node> hover(m_hover_node);
-            m_hover_node = m_sunburst.HitTest(pt);
+            m_hover_node = m_sunburst.HitTest(pt, &m_hover_free);
 
             if (hover != m_hover_node)
                 InvalidateRect(m_hwnd, nullptr, false);
@@ -691,6 +721,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         break;
     case WM_MOUSELEAVE:
         m_hover_node.reset();
+        m_hover_free = false;
         InvalidateRect(m_hwnd, nullptr, false);
         break;
 
@@ -801,6 +832,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         if (m_hover_node)
         {
             m_hover_node.reset();
+            m_hover_free = false;
             InvalidateRect(m_hwnd, nullptr, false);
         }
         goto LDefault;

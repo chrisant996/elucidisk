@@ -538,6 +538,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, consumed, start, span, convert);
         for (const auto file : files)
             MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, consumed, start, span, convert);
+#ifdef USE_FREESPACE_RING
         if (free)
         {
             Arc arc;
@@ -548,6 +549,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             arc.m_node = free;
             arcs.emplace_back(std::move(arc));
         }
+#endif
     }
 
     while (m_rings.size() <= 20)
@@ -1035,7 +1037,7 @@ void Sunburst::FormatCount(const ULONGLONG count, std::wstring& text)
     text = commas;
 }
 
-std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
+std::shared_ptr<Node> Sunburst::HitTest(POINT pt, bool* is_free)
 {
     const FLOAT angle = FindAngle(m_center, FLOAT(pt.x), FLOAT(pt.y));
     const FLOAT xdelta = (pt.x - m_center.x);
@@ -1050,7 +1052,11 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
         for (size_t ii = m_start_angles.size(); ii--;)
         {
             if (m_start_angles[ii] <= angle)
+            {
+                if (is_free)
+                    *is_free = (m_roots[ii]->GetFreeSpace() && angle > m_free_angles[ii]);
                 return m_roots[ii];
+            }
         }
     }
     else
