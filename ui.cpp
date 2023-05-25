@@ -313,6 +313,7 @@ private:
     HWND                    m_hwnd = 0;
     const HINSTANCE         m_hinst;
     HFONT                   m_hfont = 0;
+    HFONT                   m_hfontCenter = 0;
     DpiScaler               m_dpi;
     SizeTracker             m_sizeTracker;
     LONG                    m_cxNumberArea = 0;
@@ -333,12 +334,12 @@ private:
     const MainWindow& operator=(const MainWindow&) = delete;
 };
 
-static HFONT MakeFont(const DpiScaler& dpi)
+static HFONT MakeFont(const DpiScaler& dpi, LONG points=0, LONG weight=0, const WCHAR* facename=nullptr)
 {
     LOGFONT lf = { 0 };
-    lstrcpyn(lf.lfFaceName, TEXT("Segoe UI"), _countof(lf.lfFaceName));
-    lf.lfHeight = dpi.PointSizeToHeight(10);
-    lf.lfWeight = FW_NORMAL;
+    lstrcpyn(lf.lfFaceName, facename ? facename : TEXT("Segoe UI"), _countof(lf.lfFaceName));
+    lf.lfHeight = dpi.PointSizeToHeight(points ? points : 10);
+    lf.lfWeight = weight ? weight : FW_NORMAL;
     lf.lfCharSet = DEFAULT_CHARSET;
     return CreateFontIndirect(&lf);
 }
@@ -625,6 +626,20 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             {
                 DrawNodeInfo(ps.hdc, rcClient, m_hover_node);
 
+#ifdef DEBUG
+                {
+                    static int s_counter = 0;
+                    s_counter++;
+                    WCHAR sz[100];
+                    SIZE size;
+                    swprintf_s(sz, _countof(sz), TEXT("%u paints"), s_counter);
+                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
+                    ExtTextOut(ps.hdc, rcClient.right - margin_reserve - size.cx, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+                }
+#endif
+
+                SelectFont(ps.hdc, m_hfontCenter);
+
                 ULONGLONG used = 0;
                 for (const auto root : m_roots)
                     used += root->GetSize();
@@ -643,15 +658,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 const LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
                 SetBkMode(ps.hdc, TRANSPARENT);
                 ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
-
-#ifdef DEBUG
-                static int s_counter = 0;
-                s_counter++;
-                WCHAR sz[100];
-                swprintf_s(sz, _countof(sz), TEXT("%u"), s_counter);
-                GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                ExtTextOut(ps.hdc, rcClient.right - margin_reserve - size.cx, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
-#endif
             }
 
             RestoreDC(ps.hdc, -1);
@@ -868,7 +874,11 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
 
     if (m_hfont)
         DeleteFont(m_hfont);
-    m_hfont = MakeFont(dpi);
+    if (m_hfontCenter)
+        DeleteFont(m_hfontCenter);
+
+    m_hfont = MakeFont(dpi, 10);
+    m_hfontCenter = MakeFont(dpi, 12, FW_BOLD);
 
     {
         SIZE size;
@@ -892,11 +902,6 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
         ReleaseDC(m_hwnd, hdc);
     }
 
-#if 0
-    const WORD realDpi = __GetDpiForWindow(m_hwnd);
-// TODO: Create font.
-#endif
-
     m_sunburst.OnDpiChanged(dpi);
 }
 
@@ -908,6 +913,11 @@ LRESULT MainWindow::OnDestroy()
     {
         DeleteFont(m_hfont);
         m_hfont = 0;
+    }
+    if (m_hfontCenter)
+    {
+        DeleteFont(m_hfontCenter);
+        m_hfontCenter = 0;
     }
     return 0;
 }
