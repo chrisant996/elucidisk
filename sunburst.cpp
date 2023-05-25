@@ -678,7 +678,7 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
         return D2D1::ColorF(0xB8B8B8);
 
     if (!is_root_finished(arc.m_node))
-        return D2D1::ColorF(highlight ? 0x3078F8 : 0xA8A8A8);
+        return D2D1::ColorF(highlight ? 0x3078F8 : 0xB8B8B8);
 
 #ifdef USE_RAINBOW
     const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
