@@ -708,20 +708,23 @@ D2D1_COLOR_F Sunburst::MakeRootColor(bool highlight, bool free)
         return D2D1::ColorF(free ? 0xD8D8D8 : 0xB0B0B0);
 }
 
+inline D2D1_ARC_SIZE GetArcSize(FLOAT start, FLOAT end)
+{
+    return (end - start > 180.0f) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
+}
+
 bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, const FLOAT inner_radius, const FLOAT outer_radius, ID2D1Geometry** ppGeometry)
 {
-    // When start and end points of an arc are identical, D2D gets confused
-    // where to draw the arc, since it's a full circle.  This compensates.
-    const bool forward = (start != end && start != end - 360.0f);
-
     const bool has_line = (start != end) || (inner_radius > 0.0f);
     if (end <= start)
         end += 360.0f;
 
+    // When start and end points of an arc are identical, D2D gets confused
+    // where to draw the arc, since it's a full circle.  Split into two arcs.
+    const bool split = (start == end || end - start > 270.0f);
+
     start += c_rotation;
     end += c_rotation;
-
-    const D2D1_ARC_SIZE arcSize = (end - start > 180.0f) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
 
     D2D1_POINT_2F inner_start_point = MakePoint(m_center, inner_radius, start);
     D2D1_POINT_2F inner_end_point = MakePoint(m_center, inner_radius, end);
@@ -738,11 +741,25 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
             pSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_FILLED);
 
             D2D1_ARC_SEGMENT outer;
-            outer.point = outer_end_point;
             outer.size = D2D1::SizeF(outer_radius, outer_radius);
-            outer.rotationAngle = start;
-            outer.sweepDirection = forward ? D2D1_SWEEP_DIRECTION_CLOCKWISE : D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE;
-            outer.arcSize = arcSize;
+            outer.sweepDirection = D2D1_SWEEP_DIRECTION_CLOCKWISE;
+            if (split)
+            {
+                const FLOAT mid = start + std::min<FLOAT>(359.0f, end - 1.0f - start);
+                outer.point = MakePoint(m_center, outer_radius, mid);
+                outer.rotationAngle = start;
+                outer.arcSize = GetArcSize(start, mid);
+                pSink->AddArc(outer);
+                outer.point = outer_end_point;
+                outer.rotationAngle = mid;
+                outer.arcSize = GetArcSize(mid, end);
+            }
+            else
+            {
+                outer.point = outer_end_point;
+                outer.rotationAngle = start;
+                outer.arcSize = GetArcSize(start, end);
+            }
             pSink->AddArc(outer);
 
             if (has_line)
@@ -751,11 +768,25 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
             if (inner_radius > 0.0f)
             {
                 D2D1_ARC_SEGMENT inner;
-                inner.point = inner_start_point;
                 inner.size = D2D1::SizeF(inner_radius, inner_radius);
-                inner.rotationAngle = end;
-                inner.sweepDirection = forward ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE;
-                inner.arcSize = arcSize;
+                inner.sweepDirection = D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE;
+                if (split)
+                {
+                    const FLOAT mid = start + std::min<FLOAT>(359.0f, end - 1.0f - start);
+                    inner.point = MakePoint(m_center, inner_radius, mid);
+                    inner.rotationAngle = mid;
+                    inner.arcSize = GetArcSize(mid, end);
+                    pSink->AddArc(inner);
+                    inner.point = inner_start_point;
+                    inner.rotationAngle = end;
+                    inner.arcSize = GetArcSize(start, mid);
+                }
+                else
+                {
+                    inner.point = inner_start_point;
+                    inner.rotationAngle = end;
+                    inner.arcSize = GetArcSize(start, end);
+                }
                 pSink->AddArc(inner);
             }
 
