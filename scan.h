@@ -11,6 +11,7 @@ struct ScanFeedback
 {
     std::recursive_mutex& mutex;
     std::shared_ptr<Node>& current;
+    bool use_compressed_size = false;
 };
 
 std::shared_ptr<DirNode> MakeRoot(const WCHAR* path);

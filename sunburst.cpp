@@ -813,8 +813,6 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
     assert(m_bounds.left < m_bounds.right);
     assert(m_bounds.top < m_bounds.bottom);
-    assert(m_center.x == (m_bounds.left + m_bounds.right) / 2);
-    assert(m_center.y == (m_bounds.top + m_bounds.bottom) / 2);
 
     ID2D1Layer* pFileLayer = nullptr;
     D2D1_LAYER_PARAMETERS fileLayerParams = D2D1::LayerParameters(
@@ -852,15 +850,16 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
         if (SUCCEEDED(target.Factory()->CreateEllipseGeometry(ellipse, &pCircle)))
         {
             if (m_roots.size() &&
-                m_roots[0]->GetFreeSpace() &&
-                m_start_angles.size() == m_roots.size() &&
-                m_free_angles.size() == m_roots.size())
+                (m_roots.size() > 1 || m_roots[0]->GetFreeSpace()) &&
+                m_start_angles.size() == m_roots.size())
             {
+                assert(m_free_angles.empty() || m_free_angles.size() == m_roots.size());
+
                 FLOAT end = m_start_angles[0];
                 for (size_t ii = m_roots.size(); ii--;)
                 {
                     const FLOAT start = m_start_angles[ii];
-                    const FLOAT free = m_free_angles[ii];
+                    const FLOAT free = m_free_angles.empty() ? end : m_free_angles[ii];
 
                     const bool isHighlight = (highlight == m_roots[ii]);
 
@@ -872,7 +871,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
                         ReleaseI(pGeometry);
                     }
-                    if (SUCCEEDED(MakeArcGeometry(target, free, end, 0.0f, mx.center_radius, &pGeometry)))
+                    if (g_show_free_space && SUCCEEDED(MakeArcGeometry(target, free, end, 0.0f, mx.center_radius, &pGeometry)))
                     {
                         pFillBrush->SetColor(MakeRootColor(isHighlight, true));
                         pTarget->FillGeometry(pGeometry, pFillBrush);
@@ -892,6 +891,19 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
             }
 
             pTarget->DrawGeometry(pCircle, pLineBrush, mx.stroke);
+
+            if (!g_show_free_space && m_roots.size() > 1)
+            {
+                FLOAT prev = -1234.0f;
+                pFillBrush->SetColor(MakeRootColor(false, true));
+                for (size_t ii = m_roots.size(); ii--;)
+                {
+                    const FLOAT start = m_start_angles[ii] + c_rotation;
+                    if (prev != start)
+                        pTarget->DrawLine(m_center, MakePoint(m_center, mx.center_radius, start), pFillBrush, mx.stroke);
+                    prev = start;
+                }
+            }
 
             ReleaseI(pCircle);
         }
@@ -1085,7 +1097,7 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt, bool* is_free)
             if (m_start_angles[ii] <= angle)
             {
                 if (is_free)
-                    *is_free = (m_roots[ii]->GetFreeSpace() && angle > m_free_angles[ii]);
+                    *is_free = (m_free_angles.size() && m_roots[ii]->GetFreeSpace() && angle > m_free_angles[ii]);
                 return m_roots[ii];
             }
         }

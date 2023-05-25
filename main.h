@@ -18,6 +18,9 @@ void ReleaseI(T*& p)
     p = nullptr;
 }
 
-LONG ReadRegLong(const WCHAR* root, const WCHAR* name, LONG default_value);
-void WriteRegLong(const WCHAR* root, const WCHAR* name, LONG value);
+LONG ReadRegLong(const WCHAR* name, LONG default_value);
+void WriteRegLong(const WCHAR* name, LONG value);
+
+extern bool g_use_compressed_size;
+extern bool g_show_free_space;
 

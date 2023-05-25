@@ -67,17 +67,20 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
     std::shared_ptr<DirNode> root = std::make_shared<DirNode>(path.c_str());
 
 // TODO: Support free space on UNC shares and on \\?\X: drives.
-    const WCHAR* p = path.c_str();
-    if (p[0] && p[1] == ':' && is_separator(p[2]) && !p[3])
+    if (g_show_free_space)
     {
-        DWORD sectors_per_cluster;
-        DWORD bytes_per_sector;
-        DWORD free_clusters;
-        DWORD total_clusters;
-        if (GetDiskFreeSpace(p, &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
+        const WCHAR* p = path.c_str();
+        if (p[0] && p[1] == ':' && is_separator(p[2]) && !p[3])
         {
-            const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
-            root->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
+            DWORD sectors_per_cluster;
+            DWORD bytes_per_sector;
+            DWORD free_clusters;
+            DWORD total_clusters;
+            if (GetDiskFreeSpace(p, &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
+            {
+                const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
+                root->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
+            }
         }
     }
 
@@ -134,6 +137,8 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
     }
 #endif
 
+    const bool use_compressed_size = feedback.use_compressed_size;
+    const size_t base_path_len = find.length();
     find.append(TEXT("*"));
 
     std::vector<std::shared_ptr<DirNode>> dirs;
@@ -149,6 +154,8 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
         {
             std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
 
+            const bool compressed = (use_compressed_size && (fd.dwFileAttributes & FILE_ATTRIBUTE_COMPRESSED));
+
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 if (!wcscmp(fd.cFileName, TEXT(".")) || !wcscmp(fd.cFileName, TEXT("..")))
@@ -156,6 +163,9 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
 
                 dirs.emplace_back(root->AddDir(fd.cFileName));
                 assert(dirs.back());
+
+                if (compressed)
+                    dirs.back()->SetCompressed();
 
                 if (++num > 50 || GetTickCount() - tick > 50)
                 {
@@ -168,11 +178,23 @@ LResetFeedbackInterval:
             else
             {
                 ULARGE_INTEGER uli;
-                uli.HighPart = fd.nFileSizeHigh;
-                uli.LowPart = fd.nFileSizeLow;
+                if (compressed)
+                {
+                    find.resize(base_path_len);
+                    find.append(fd.cFileName);
+                    uli.LowPart = GetCompressedFileSize(find.c_str(), &uli.HighPart);
+                }
+                else
+                {
+                    uli.HighPart = fd.nFileSizeHigh;
+                    uli.LowPart = fd.nFileSizeLow;
+                }
 
                 std::shared_ptr<FileNode> file = root->AddFile(fd.cFileName, uli.QuadPart);
                 assert(file);
+
+                if (compressed)
+                    file->SetCompressed();
 
                 if (++num > 50 || GetTickCount() - tick > 50)
                 {

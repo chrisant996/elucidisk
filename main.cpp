@@ -9,6 +9,11 @@
 #include <stdlib.h>
 #include <shellapi.h>
 
+static const WCHAR c_reg_root[] = TEXT("Software\\Elucidisk");
+
+bool g_use_compressed_size = false;
+bool g_show_free_space = true;
+
 int PASCAL WinMain(
     _In_ HINSTANCE hinstCurrent,
     _In_opt_ HINSTANCE /*hinstPrevious*/,
@@ -32,6 +37,9 @@ int PASCAL WinMain(
 
     InitCommonControls();
     InitializeD2D();
+
+    g_use_compressed_size = !!ReadRegLong(TEXT("UseCompressedSize"), false);
+    g_show_free_space = !!ReadRegLong(TEXT("ShowFreeSpace"), true);
 
     const HWND hwnd = MakeUi(hinstCurrent, argc, argv);
 
@@ -58,12 +66,12 @@ int PASCAL WinMain(
     return int(msg.wParam);
 }
 
-LONG ReadRegLong(const WCHAR* root, const WCHAR* name, LONG default_value)
+LONG ReadRegLong(const WCHAR* name, LONG default_value)
 {
     HKEY hkey;
     LONG ret = default_value;
 
-    if (ERROR_SUCCESS == RegOpenKey(HKEY_CURRENT_USER, root, &hkey))
+    if (ERROR_SUCCESS == RegOpenKey(HKEY_CURRENT_USER, c_reg_root, &hkey))
     {
         DWORD type;
         LONG value;
@@ -80,11 +88,11 @@ LONG ReadRegLong(const WCHAR* root, const WCHAR* name, LONG default_value)
     return ret;
 }
 
-void WriteRegLong(const WCHAR* root, const WCHAR* name, LONG value)
+void WriteRegLong(const WCHAR* name, LONG value)
 {
     HKEY hkey;
 
-    if (ERROR_SUCCESS == RegCreateKey(HKEY_CURRENT_USER, root, &hkey))
+    if (ERROR_SUCCESS == RegCreateKey(HKEY_CURRENT_USER, c_reg_root, &hkey))
     {
         RegSetValueEx(hkey, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
         RegCloseKey(hkey);

@@ -146,7 +146,7 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
                 root = pThis->m_roots[pThis->m_cursor++];
             }
 
-            ScanFeedback feedback = { pThis->m_ui_mutex, pThis->m_current };
+            ScanFeedback feedback = { pThis->m_ui_mutex, pThis->m_current, g_use_compressed_size };
             Scan(root, generation, &pThis->m_generation, feedback);
         }
     }
@@ -158,7 +158,7 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
 class SizeTracker
 {
 public:
-                            SizeTracker(const WCHAR* keyname, LONG default_cx, LONG default_cy);
+                            SizeTracker(LONG default_cx, LONG default_cy);
     void                    OnCreate(HWND hwnd);
     void                    OnSize();
     void                    OnDestroy();
@@ -168,7 +168,6 @@ protected:
     void                    WritePosition();
 
 private:
-    std::wstring            m_keyname;
     HWND                    m_hwnd = 0;
     bool                    m_resized = false;
     bool                    m_maximized = false;
@@ -177,12 +176,9 @@ private:
     const SIZE              m_default_size;
 };
 
-SizeTracker::SizeTracker(const WCHAR* keyname, LONG default_cx, LONG default_cy)
+SizeTracker::SizeTracker(LONG default_cx, LONG default_cy)
 : m_default_size({ default_cx, default_cy })
 {
-    assert(keyname && *keyname);
-    m_keyname = TEXT("Software\\");
-    m_keyname.append(keyname);
 }
 
 void SizeTracker::OnCreate(HWND hwnd)
@@ -233,9 +229,9 @@ void SizeTracker::ReadPosition()
 {
     assert(m_hwnd);
 
-    LONG cx = ReadRegLong(m_keyname.c_str(), TEXT("WindowWidth"), 0);
-    LONG cy = ReadRegLong(m_keyname.c_str(), TEXT("WindowHeight"), 0);
-    const bool maximized = !!ReadRegLong(m_keyname.c_str(), TEXT("Maximized"), false);
+    LONG cx = ReadRegLong(TEXT("WindowWidth"), 0);
+    LONG cy = ReadRegLong(TEXT("WindowHeight"), 0);
+    const bool maximized = !!ReadRegLong(TEXT("Maximized"), false);
 
     MONITORINFO info = { sizeof(info) };
     HMONITOR hmon = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTOPRIMARY);
@@ -267,9 +263,9 @@ void SizeTracker::WritePosition()
     const LONG cx = m_dpi.ScaleTo(m_rcRestore.right - m_rcRestore.left, 96);
     const LONG cy = m_dpi.ScaleTo(m_rcRestore.bottom - m_rcRestore.top, 96);
 
-    WriteRegLong(m_keyname.c_str(), TEXT("WindowWidth"), cx);
-    WriteRegLong(m_keyname.c_str(), TEXT("WindowHeight"), cy);
-    WriteRegLong(m_keyname.c_str(), TEXT("Maximized"), m_maximized);
+    WriteRegLong(TEXT("WindowWidth"), cx);
+    WriteRegLong(TEXT("WindowHeight"), cy);
+    WriteRegLong(TEXT("Maximized"), m_maximized);
 
     m_resized = false;
 }
@@ -351,7 +347,7 @@ static HFONT MakeFont(const DpiScaler& dpi, LONG points=0, LONG weight=0, const 
 
 MainWindow::MainWindow(HINSTANCE hinst)
 : m_hinst(hinst)
-, m_sizeTracker(TEXT("Elucidisk"), 800, 600)
+, m_sizeTracker(800, 600)
 , m_scanner(m_ui_mutex)
 {
 }
@@ -568,11 +564,19 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
 
         if (has_size)
         {
+            COLORREF oldColor = 0;
             m_sunburst.FormatSize(size, text, units);
             GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
             text.append(TEXT(" "));
             text.append(units);
+            if (node->IsCompressed())
+            {
+                text.append(TEXT(" compressed"));
+                oldColor = SetTextColor(hdc, RGB(0, 51, 255));
+            }
             ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
+            if (node->IsCompressed())
+                SetTextColor(hdc, oldColor);
         }
 
         if (node->AsDir() && !show_free)
@@ -735,10 +739,21 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 GetTextExtentPoint32(ps.hdc, text.c_str(), int(text.length()), &size);
 
                 rcClient.top += margin_reserve + top_reserve;
-                const LONG xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
-                const LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
+                LONG xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
+                LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
                 SetBkMode(ps.hdc, TRANSPARENT);
                 ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
+
+                SelectFont(ps.hdc, m_hfont);
+
+                if (m_roots.size() > 1)
+                {
+                    text = TEXT("Total");
+                    GetTextExtentPoint32(ps.hdc, text.c_str(), int(text.length()), &size);
+                    yy -= size.cy;
+                    xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
+                    ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
+                }
             }
 
             RestoreDC(ps.hdc, -1);

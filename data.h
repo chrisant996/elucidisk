@@ -33,9 +33,12 @@ public:
     virtual FileNode*       AsFile() { return nullptr; }
     virtual const FileNode* AsFile() const { return nullptr; }
     virtual const FreeSpaceNode* AsFreeSpace() const { return nullptr; }
+    void                    SetCompressed() { m_compressed = true; }
+    bool                    IsCompressed() const { return m_compressed; }
 protected:
     const std::shared_ptr<DirNode> m_parent;
     const std::wstring      m_name;
+    bool                    m_compressed = false;
 };
 
 class DirNode : public Node
