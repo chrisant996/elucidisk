@@ -404,8 +404,8 @@ bool Sunburst::SetBounds(const D2D1_RECT_F& rect)
     const bool changed = !!memcmp(&m_bounds, &rect, sizeof(rect));
 
     m_bounds = rect;
-    m_center = D2D1::Point2F((rect.left + rect.right) / 2.0f,
-                             (rect.top + rect.bottom) / 2.0f);
+    m_center.x = floor((rect.left + rect.right) / 2.0f) + 0.5f;
+    m_center.y = floor((rect.top + rect.bottom) / 2.0f) + 0.5f;
 
     return changed;
 }
