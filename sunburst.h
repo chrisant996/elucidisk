@@ -53,13 +53,13 @@ public:
                             Sunburst();
                             ~Sunburst();
 
-    void                    Init(const Sunburst& other);
+    bool                    OnDpiChanged(const DpiScaler& dpi);
+    bool                    SetBounds(const D2D1_RECT_F& rect);
     void                    BuildRings(const std::vector<std::shared_ptr<DirNode>>& roots);
-    void                    RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& rect, const std::shared_ptr<Node>& highlight);
+    void                    RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight);
     void                    FormatSize(ULONGLONG size, std::wstring& text, std::wstring& units, int places=-1);
     void                    FormatCount(ULONGLONG count, std::wstring& text);
-    std::shared_ptr<Node>   HitTest(POINT pt);
-    void                    OnDpiChanged(const DpiScaler& dpi);
+    std::shared_ptr<Node>   HitTest(POINT pt, bool* is_free=nullptr);
 
 protected:
     static D2D1_COLOR_F     MakeColor(const Arc& arc, size_t depth, bool highlight);
@@ -75,8 +75,8 @@ protected:
 
 private:
     DpiScaler               m_dpi;
-    D2D1_RECT_F             m_bounds;
-    D2D1_POINT_2F           m_center;
+    D2D1_RECT_F             m_bounds = D2D1::RectF();
+    D2D1_POINT_2F           m_center = D2D1::Point2F();
     UnitScale               m_units = UnitScale::MB;
 
     std::vector<std::shared_ptr<DirNode>> m_roots;

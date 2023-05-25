@@ -398,11 +398,16 @@ Sunburst::~Sunburst()
 {
 }
 
-void Sunburst::Init(const Sunburst& other)
+bool Sunburst::SetBounds(const D2D1_RECT_F& rect)
 {
-    m_dpi = other.m_dpi;
-    m_bounds = other.m_bounds;
-    m_center = other.m_center;
+    static_assert(sizeof(m_bounds) == sizeof(rect), "data size mismatch");
+    const bool changed = !!memcmp(&m_bounds, &rect, sizeof(rect));
+
+    m_bounds = rect;
+    m_center = D2D1::Point2F((rect.left + rect.right) / 2.0f,
+                             (rect.top + rect.bottom) / 2.0f);
+
+    return changed;
 }
 
 #ifdef USE_MIN_ARC_LENGTH
@@ -667,12 +672,8 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     else if (arc.m_node->AsDir() && arc.m_node->AsDir()->Hidden())
         return D2D1::ColorF(0xB8B8B8);
 
-    DirNode* dir = arc.m_node->AsDir();
-    for (DirNode* parent = dir ? dir : arc.m_node->GetParent().get(); parent; parent = parent->GetParent().get())
-    {
-        if (!parent->Finished())
-            return D2D1::ColorF(highlight ? 0x3078F8 : 0xA8A8A8);
-    }
+    if (!is_root_finished(arc.m_node))
+        return D2D1::ColorF(highlight ? 0x3078F8 : 0xA8A8A8);
 
 #ifdef USE_RAINBOW
     const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
@@ -767,18 +768,24 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
     return !!pGeometry;
 }
 
-void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& rect, const std::shared_ptr<Node>& highlight)
+inline bool is_highlight(const std::shared_ptr<Node>& highlight, const std::shared_ptr<Node>& node)
+{
+    return highlight && highlight == node && is_root_finished(node);
+}
+
+void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight)
 {
     ID2D1RenderTarget* pTarget = target.Target();
     ID2D1Geometry* pHighlight = nullptr;
 
-    m_bounds = rect;
-    m_center = D2D1::Point2F((rect.left + rect.right) / 2.0f,
-                             (rect.top + rect.bottom) / 2.0f);
+    assert(m_bounds.left < m_bounds.right);
+    assert(m_bounds.top < m_bounds.bottom);
+    assert(m_center.x == (m_bounds.left + m_bounds.right) / 2);
+    assert(m_center.y == (m_bounds.top + m_bounds.bottom) / 2);
 
     ID2D1Layer* pFileLayer = nullptr;
     D2D1_LAYER_PARAMETERS fileLayerParams = D2D1::LayerParameters(
-        rect, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.60f);
+        m_bounds, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.60f);
     pTarget->CreateLayer(&pFileLayer);
 
     SunburstMetrics mx(m_dpi, m_bounds);
@@ -846,7 +853,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
             }
             else
             {
-                const bool isHighlight = (m_roots.size() && highlight == m_roots[0]);
+                const bool isHighlight = (m_roots.size() && is_highlight(highlight, m_roots[0]));
                 pFillBrush->SetColor(MakeRootColor(isHighlight, false));
                 pTarget->FillGeometry(pCircle, pFillBrush);
             }
@@ -899,7 +906,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
             ID2D1Geometry* pGeometry = nullptr;
             if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &pGeometry)))
             {
-                const bool isHighlight = (highlight == arc.m_node);
+                const bool isHighlight = is_highlight(highlight, arc.m_node);
 
                 pFillBrush->SetColor(MakeColor(arc, depth, isHighlight));
 
@@ -942,8 +949,6 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
             ID2D1Geometry* pGeometry = nullptr;
             if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &pGeometry)))
             {
-                const bool isHighlight = (highlight == arc.m_node);
-
                 pFillBrush->SetColor(D2D1::ColorF(isFile ? 0x999999 : 0x555555));
                 pTarget->FillGeometry(pGeometry, pFillBrush);
 
@@ -960,7 +965,8 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const D2D1_RECT_F& re
 
     if (pHighlight)
     {
-        pTarget->DrawGeometry(pHighlight, pLineBrush, mx.stroke * 2.0f);
+        if (!highlight->GetParent() || is_root_finished(highlight))
+            pTarget->DrawGeometry(pHighlight, pLineBrush, mx.stroke * 2.0f);
         ReleaseI(pHighlight);
     }
 
@@ -1086,12 +1092,16 @@ std::shared_ptr<Node> Sunburst::HitTest(POINT pt)
     return nullptr;
 }
 
-void Sunburst::OnDpiChanged(const DpiScaler& dpi)
+bool Sunburst::OnDpiChanged(const DpiScaler& dpi)
 {
+    const bool changed = !m_dpi.IsDpiEqual(dpi);
+
     m_dpi.OnDpiChanged(dpi);
 
     m_rings.clear();
     m_start_angles.clear();
     m_free_angles.clear();
+
+    return changed;
 }
 

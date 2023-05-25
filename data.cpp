@@ -33,6 +33,17 @@ static void build_full_path(std::wstring& path, const Node* node)
     }
 }
 
+bool is_root_finished(const std::shared_ptr<Node>& node)
+{
+    DirNode* dir = node->AsDir();
+    for (DirNode* parent = dir ? dir : node->GetParent().get(); parent; parent = parent->GetParent().get())
+    {
+        if (!parent->Finished())
+            return false;
+    }
+    return true;
+}
+
 void Node::GetFullPath(std::wstring& out) const
 {
     build_full_path(out, this);

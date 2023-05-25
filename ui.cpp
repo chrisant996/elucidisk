@@ -602,11 +602,13 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 {
                     std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
 
+                    sunburst.OnDpiChanged(m_dpi);
+                    sunburst.SetBounds(bounds);
+
 // TODO: Only rebuild rings when something has changed.
-                    sunburst.Init(m_sunburst); // Solve chicken and egg problem: HitTest depends on RenderRings.
                     sunburst.BuildRings(m_roots);
                     m_hover_node = sunburst.HitTest(pt);
-                    sunburst.RenderRings(m_directRender, bounds, m_hover_node);
+                    sunburst.RenderRings(m_directRender, m_hover_node);
                 }
 
                 if (gen == s_gen)
@@ -709,7 +711,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             pt.y = GET_Y_LPARAM(lParam);
 
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
-            Expand(node);
+            if (node && is_root_finished(node))
+                Expand(node);
         }
         break;
 
@@ -720,7 +723,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             pt.y = GET_Y_LPARAM(lParam);
 
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
-            if (node)
+            if (node && is_root_finished(node))
             {
                 DirNode* dir = node->AsDir();
                 FileNode* file = node->AsFile();

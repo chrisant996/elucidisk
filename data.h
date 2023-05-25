@@ -97,3 +97,5 @@ private:
 inline bool is_separator(const WCHAR ch) { return ch == '/' || ch == '\\'; }
 void ensure_separator(std::wstring& path);
 
+bool is_root_finished(const std::shared_ptr<Node>& node);
+
