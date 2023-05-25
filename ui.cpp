@@ -304,6 +304,8 @@ protected:
     void                    DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node, bool free_space);
 
     void                    Expand(const std::shared_ptr<Node>& node);
+    void                    Back();
+    void                    Forward();
     void                    DeleteNode(const std::shared_ptr<Node>& node);
     void                    Rescan();
 
@@ -323,6 +325,8 @@ private:
 
     std::vector<std::shared_ptr<DirNode>> m_original_roots;
     std::vector<std::shared_ptr<DirNode>> m_roots;
+    std::vector<std::shared_ptr<DirNode>> m_back_stack; // (nullptr means use m_original_roots)
+    size_t                  m_back_current = 0;
     ScannerThread           m_scanner;
 
     DirectHwndRenderTarget  m_directRender;
@@ -390,6 +394,11 @@ void MainWindow::Scan(int argc, const WCHAR** argv, bool rescan)
     m_roots = m_scanner.Start(argc, argv);
     if (!rescan)
         m_original_roots = m_roots;
+
+    m_back_stack.clear();
+    m_back_stack.emplace_back(nullptr);
+    m_back_current = 0;
+
     SetTimer(m_hwnd, TIMER_PROGRESS, INTERVAL_PROGRESS, nullptr);
     InvalidateRect(m_hwnd, nullptr, false);
 }
@@ -399,6 +408,8 @@ void MainWindow::Expand(const std::shared_ptr<Node>& node)
     if (!node || node->AsFile())
         return;
 
+    std::shared_ptr<DirNode> back;
+
     const bool up = (m_roots.size() == 1 && node == m_roots[0]);
     if (up && !node->GetParent())
     {
@@ -406,6 +417,7 @@ void MainWindow::Expand(const std::shared_ptr<Node>& node)
             return;
 
         m_roots = m_original_roots;
+        assert(back == nullptr);
     }
     else
     {
@@ -420,7 +432,44 @@ void MainWindow::Expand(const std::shared_ptr<Node>& node)
 
         m_roots.clear();
         m_roots.emplace_back(dir);
+        back = dir;
     }
+
+    assert(m_back_stack.size() > m_back_current);
+    m_back_stack.resize(++m_back_current);
+    m_back_stack.emplace_back(back);
+
+    InvalidateRect(m_hwnd, nullptr, false);
+}
+
+void MainWindow::Back()
+{
+    if (m_back_current == 0)
+        return;
+
+    std::shared_ptr<DirNode> root = m_back_stack[--m_back_current];
+
+    m_roots.clear();
+    if (root)
+        m_roots.emplace_back(root);
+    else
+        m_roots = m_original_roots;
+
+    InvalidateRect(m_hwnd, nullptr, false);
+}
+
+void MainWindow::Forward()
+{
+    if (m_back_current + 1 == m_back_stack.size())
+        return;
+
+    std::shared_ptr<DirNode> root = m_back_stack[++m_back_current];
+
+    m_roots.clear();
+    if (root)
+        m_roots.emplace_back(root);
+    else
+        m_roots = m_original_roots;
 
     InvalidateRect(m_hwnd, nullptr, false);
 }
@@ -846,6 +895,13 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         case VK_UP:
             if (m_roots.size() == 1)
                 Expand(m_roots[0]);
+            break;
+        case VK_LEFT:
+        case VK_BACK:
+            Back();
+            break;
+        case VK_RIGHT:
+            Forward();
             break;
         default:
             goto LDefault;
