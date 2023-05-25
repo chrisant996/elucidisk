@@ -12,3 +12,5 @@
 #define IDM_HIDE_DIRECTORY      2004
 #define IDM_SHOW_DIRECTORY      2005
 
+#define IDI_MAIN                1
+

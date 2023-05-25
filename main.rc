@@ -2,6 +2,8 @@
 #include "version.rc"
 #include "res.h"
 
+IDI_MAIN ICON DISCARDABLE "main.ico"
+
 IDR_CONTEXT_MENU MENU DISCARDABLE
 BEGIN
     POPUP ""
