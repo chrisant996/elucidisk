@@ -22,7 +22,7 @@ bool ShellRecycle(HWND hwnd, const WCHAR* _path)
     WCHAR message[2048];
     swprintf_s(message, _countof(message), TEXT("Are you sure you want to move \"%s\" to the Recycle Bin?"), _path);
 
-    switch (MessageBox(hwnd, message, TEXT("Confirm Recycle"), MB_YESNO|MB_ICONQUESTION))
+    switch (MessageBox(hwnd, message, TEXT("Confirm Recycle"), MB_YESNOCANCEL|MB_ICONQUESTION))
     {
     case IDYES:
         {

@@ -817,13 +817,18 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             pt.x = GET_X_LPARAM(lParam);
             pt.y = GET_Y_LPARAM(lParam);
 
+            int nPos;
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
-            if (node && is_root_finished(node))
-            {
-                DirNode* dir = node->AsDir();
-                FileNode* file = node->AsFile();
+            DirNode* dir = node ? node->AsDir() : nullptr;
+            FileNode* file = node ? node->AsFile() : nullptr;
+            std::wstring path;
 
-                int nPos;
+            if (!node)
+            {
+                nPos = 3;
+            }
+            else if (is_root_finished(node))
+            {
                 if (file)
                     nPos = 0;
                 else if (dir)
@@ -831,51 +836,67 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 else
                     break;
 
-                std::wstring path;
                 node->GetFullPath(path);
                 if (path.empty())
                     break;
+            }
 
-                POINT ptScreen = pt;
-                ClientToScreen(m_hwnd, &ptScreen);
+            POINT ptScreen = pt;
+            ClientToScreen(m_hwnd, &ptScreen);
 
-                HMENU hmenu = LoadMenu(m_hinst, MAKEINTRESOURCE(IDR_CONTEXT_MENU));
-                HMENU hmenuSub = GetSubMenu(hmenu, nPos);
+            HMENU hmenu = LoadMenu(m_hinst, MAKEINTRESOURCE(IDR_CONTEXT_MENU));
+            HMENU hmenuSub = GetSubMenu(hmenu, nPos);
 
-                if (dir)
-                    DeleteMenu(hmenuSub, dir->Hidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
+            if (dir)
+                DeleteMenu(hmenuSub, dir->Hidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
 
 // TODO: Delete is NYI.
-                DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
+            DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
 
-                switch (TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
-                {
-                case IDM_OPEN_DIRECTORY:
-                case IDM_OPEN_FILE:
+            if (g_use_compressed_size)
+                CheckMenuItem(hmenuSub, IDM_OPTION_COMPRESSED, MF_BYCOMMAND|MF_CHECKED);
+            if (g_show_free_space)
+                CheckMenuItem(hmenuSub, IDM_OPTION_FREESPACE, MF_BYCOMMAND|MF_CHECKED);
+
+            switch (TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
+            {
+            case IDM_OPEN_DIRECTORY:
+            case IDM_OPEN_FILE:
+                if (node)
                     ShellOpen(m_hwnd, path.c_str());
-                    break;
+                break;
 
-                case IDM_RECYCLE_ENTRY:
-                    if (ShellRecycle(m_hwnd, path.c_str()))
-                        DeleteNode(node);
-                    break;
-                case IDM_DELETE_ENTRY:
-                    if (ShellDelete(m_hwnd, path.c_str()))
-                        DeleteNode(node);
-                    break;
+            case IDM_RECYCLE_ENTRY:
+                if (node && ShellRecycle(m_hwnd, path.c_str()))
+                    DeleteNode(node);
+                break;
+            case IDM_DELETE_ENTRY:
+                if (node && ShellDelete(m_hwnd, path.c_str()))
+                    DeleteNode(node);
+                break;
 
-                case IDM_HIDE_DIRECTORY:
-                case IDM_SHOW_DIRECTORY:
-                    if (dir)
-                    {
-                        dir->Hide(!dir->Hidden());
-                        InvalidateRect(m_hwnd, nullptr, false);
-                    }
-                    break;
+            case IDM_HIDE_DIRECTORY:
+            case IDM_SHOW_DIRECTORY:
+                if (dir)
+                {
+                    dir->Hide(!dir->Hidden());
+                    InvalidateRect(m_hwnd, nullptr, false);
                 }
+                break;
 
-                DestroyMenu(hmenu);
+            case IDM_OPTION_COMPRESSED:
+                g_use_compressed_size = !g_use_compressed_size;
+                WriteRegLong(TEXT("UseCompressedSize"), g_use_compressed_size);
+                if (IDYES == MessageBox(m_hwnd, TEXT("The setting will take effect in the next scan.\n\nRescan now?"), TEXT("Confirm Rescan"), MB_YESNOCANCEL|MB_ICONQUESTION))
+                    Rescan();
+                break;
+            case IDM_OPTION_FREESPACE:
+                g_show_free_space = !g_show_free_space;
+                WriteRegLong(TEXT("ShowFreeSpace"), g_show_free_space);
+                break;
             }
+
+            DestroyMenu(hmenu);
         }
         break;
 

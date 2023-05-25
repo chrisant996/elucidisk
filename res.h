@@ -12,5 +12,8 @@
 #define IDM_HIDE_DIRECTORY      2004
 #define IDM_SHOW_DIRECTORY      2005
 
+#define IDM_OPTION_COMPRESSED   2100
+#define IDM_OPTION_FREESPACE    2101
+
 #define IDI_MAIN                1
 

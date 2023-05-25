@@ -465,7 +465,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
         for (const auto dir : roots)
         {
             const double size = double(dir->GetSize());
-            std::shared_ptr<FreeSpaceNode> free = dir->GetFreeSpace();
+            std::shared_ptr<FreeSpaceNode> free = g_show_free_space ? dir->GetFreeSpace() : nullptr;
             if (free)
             {
                 totals.emplace_back(double(free->GetTotalSize()));
@@ -503,11 +503,14 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             m_start_angles.emplace_back(start);
             spans.emplace_back(mid - start);
 
-            std::shared_ptr<FreeSpaceNode> free = m_roots[ii]->GetFreeSpace();
-            if (free)
+            if (g_show_free_space)
             {
-                const float angle = float((sweep - free->GetFreeSize()) * 360 / grand_total);
-                m_free_angles.emplace_back(angle);
+                std::shared_ptr<FreeSpaceNode> free = m_roots[ii]->GetFreeSpace();
+                if (free)
+                {
+                    const float angle = float((sweep - free->GetFreeSize()) * 360 / grand_total);
+                    m_free_angles.emplace_back(angle);
+                }
             }
         }
     }

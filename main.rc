@@ -27,5 +27,10 @@ BEGIN
     BEGIN
         MENUITEM "&Open in Explorer",       IDM_OPEN_DIRECTORY
     END
+    POPUP ""
+    BEGIN
+        MENUITEM "Show &Compressed Sizes",  IDM_OPTION_COMPRESSED
+        MENUITEM "Show &Free Space",        IDM_OPTION_FREESPACE
+    END
 END
 
