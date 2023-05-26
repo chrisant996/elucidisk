@@ -154,6 +154,7 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
 
                 if (pThis->m_cursor >= pThis->m_roots.size())
                 {
+                    pThis->m_current.reset();
                     pThis->m_roots.clear();
                     pThis->m_cursor = 0;
                     break;
@@ -1174,7 +1175,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_CREATE:
         SendMessage(m_hwnd, WM_SETICON, true, LPARAM(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 0, 0, 0)));
         SendMessage(m_hwnd, WM_SETICON, false, LPARAM(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 16, 16, 0)));
-        m_directRender.CreateDeviceResources(m_hwnd);
         goto LDefault;
 
     default:
