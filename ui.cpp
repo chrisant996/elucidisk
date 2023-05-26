@@ -1211,7 +1211,10 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     nPos = dir->GetFreeSpace() ? 0 : 2;
                 else
                     break;
+            }
 
+            if (node)
+            {
                 node->GetFullPath(path);
                 if (path.empty())
                     break;
