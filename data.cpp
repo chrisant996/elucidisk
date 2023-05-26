@@ -44,6 +44,27 @@ bool is_root_finished(const std::shared_ptr<Node>& node)
     return true;
 }
 
+#ifdef DEBUG
+static volatile LONG s_cNodes = 0;
+LONG CountNodes() { return s_cNodes; }
+#endif
+
+Node::Node(const WCHAR* name, const std::shared_ptr<DirNode>& parent)
+: m_name(name)
+, m_parent(parent)
+{
+#ifdef DEBUG
+    InterlockedIncrement(&s_cNodes);
+#endif
+}
+
+Node::~Node()
+{
+#ifdef DEBUG
+    InterlockedDecrement(&s_cNodes);
+#endif
+}
+
 void Node::GetFullPath(std::wstring& out) const
 {
     build_full_path(out, this);

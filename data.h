@@ -20,11 +20,15 @@ class DirNode;
 class FileNode;
 class FreeSpaceNode;
 
+#ifdef DEBUG
+LONG CountNodes();
+#endif
+
 class Node : public std::enable_shared_from_this<Node>
 {
 public:
-                            Node(const WCHAR* name, const std::shared_ptr<DirNode>& parent) : m_name(name), m_parent(parent) {}
-    virtual                 ~Node() {}
+                            Node(const WCHAR* name, const std::shared_ptr<DirNode>& parent);
+    virtual                 ~Node();
     std::shared_ptr<DirNode> GetParent() const { return m_parent; }
     const WCHAR*            GetName() const { return m_name.c_str(); }
     void                    GetFullPath(std::wstring& out) const;

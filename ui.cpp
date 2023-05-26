@@ -876,6 +876,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
             if (m_hfont)
             {
+                SetBkMode(ps.hdc, TRANSPARENT);
+
                 DrawNodeInfo(ps.hdc, rcClient, m_hover_node, m_hover_free);
 
 #ifdef DEBUG
@@ -886,7 +888,11 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     SIZE size;
                     swprintf_s(sz, _countof(sz), TEXT("%u paints"), s_counter);
                     GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    ExtTextOut(ps.hdc, rcClient.right - margin_reserve - size.cx, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+                    //ExtTextOut(ps.hdc, rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + margin_reserve), rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+
+                    swprintf_s(sz, _countof(sz), TEXT("%u nodes"), CountNodes());
+                    ExtTextOut(ps.hdc, rcClient.left + margin_reserve, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
                 }
 #endif
 
@@ -908,7 +914,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 rcClient.top += margin_reserve + m_top_reserve;
                 LONG xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
                 LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
-                SetBkMode(ps.hdc, TRANSPARENT);
                 ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
 
                 SelectFont(ps.hdc, m_hfont);
