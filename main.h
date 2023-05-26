@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include "dpi.h"
+#include <assert.h>
 
 #define USE_RAINBOW
 

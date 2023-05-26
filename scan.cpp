@@ -4,7 +4,6 @@
 #include "main.h"
 #include "data.h"
 #include "scan.h"
-#include <assert.h>
 
 //#define USE_FAKE_DATA
 

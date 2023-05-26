@@ -9,7 +9,6 @@
 #include "ui.h"
 #include "sunburst.h"
 #include "res.h"
-#include <assert.h>
 #include <windowsx.h>
 #include <iosfwd>
 

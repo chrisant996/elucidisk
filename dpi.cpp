@@ -4,7 +4,6 @@
 #include "main.h"
 #include <windowsx.h>
 #include <wincodec.h>
-#include <assert.h>
 
 #ifndef ILC_COLORMASK
 #define ILC_COLORMASK   0x00FE

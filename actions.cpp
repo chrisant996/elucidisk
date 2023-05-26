@@ -6,7 +6,6 @@
 #include <shellapi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 
 void ShellOpen(HWND hwnd, const WCHAR* path)
 {

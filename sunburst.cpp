@@ -4,7 +4,6 @@
 #include "main.h"
 #include "sunburst.h"
 #include "data.h"
-#include <assert.h>
 #include <cmath>
 
 static ID2D1Factory* s_pD2DFactory = nullptr;
