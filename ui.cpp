@@ -1193,7 +1193,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             pt.x = GET_X_LPARAM(lParam);
             pt.y = GET_Y_LPARAM(lParam);
 
-            int nPos;
+            int nPos = 0;
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
             DirNode* dir = node ? node->AsDir() : nullptr;
             FileNode* file = node ? node->AsFile() : nullptr;
@@ -1206,9 +1206,9 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             else if (is_root_finished(node))
             {
                 if (file)
-                    nPos = 0;
+                    nPos = 1;
                 else if (dir)
-                    nPos = dir->GetFreeSpace() ? 2 : 1;
+                    nPos = dir->GetFreeSpace() ? 0 : 2;
                 else
                     break;
 
@@ -1223,8 +1223,13 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             HMENU hmenu = LoadMenu(m_hinst, MAKEINTRESOURCE(IDR_CONTEXT_MENU));
             HMENU hmenuSub = GetSubMenu(hmenu, nPos);
 
+            if (file)
+                DeleteMenu(hmenuSub, IDM_OPEN_DIRECTORY, MF_BYCOMMAND);
             if (dir)
+            {
+                DeleteMenu(hmenuSub, IDM_OPEN_FILE, MF_BYCOMMAND);
                 DeleteMenu(hmenuSub, dir->Hidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
+            }
 
 // TODO: Delete is NYI.
             DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
