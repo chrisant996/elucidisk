@@ -1415,6 +1415,12 @@ void MainWindow::OnLayout(RECT* prc)
     rc.top = prc->top + m_top_reserve + m_margin_reserve + m_top_reserve + m_top_reserve + margin + margin;
     rc.right = rc.left + dim;
     rc.bottom = rc.top + dim;
+#if 0
+// TODO: Folder icon.
+    m_buttons.AddButton(IDM_FOLDER, rc, TEXT("..."));
+    OffsetRect(&rc, 0, dim + margin);
+#endif
+
     for (UINT ii = 0; ii < m_drives.size(); ++ii)
     {
         if (rc.bottom > prc->bottom - margin - dim - margin)
