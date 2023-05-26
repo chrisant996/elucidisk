@@ -1074,9 +1074,24 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
                 SelectFont(ps.hdc, m_hfont);
 
+                text.clear();
                 if (m_roots.size() > 1)
                 {
                     text = TEXT("Total");
+                }
+                else if (m_roots.size() == 1)
+                {
+                    for (const auto& drive : m_drives)
+                    {
+                        if (wcsnicmp(drive.c_str(), m_roots[0]->GetName(), drive.length()) == 0)
+                        {
+                            text = drive;
+                            break;
+                        }
+                    }
+                }
+                if (!text.empty())
+                {
                     GetTextExtentPoint32(ps.hdc, text.c_str(), int(text.length()), &size);
                     yy -= size.cy;
                     xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
