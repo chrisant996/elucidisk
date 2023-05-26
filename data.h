@@ -29,7 +29,8 @@ class Node : public std::enable_shared_from_this<Node>
 public:
                             Node(const WCHAR* name, const std::shared_ptr<DirNode>& parent);
     virtual                 ~Node();
-    std::shared_ptr<DirNode> GetParent() const { return m_parent; }
+    std::shared_ptr<DirNode> GetParent() const { return m_parent.lock(); }
+    bool                    IsParentFinished() const;
     const WCHAR*            GetName() const { return m_name.c_str(); }
     void                    GetFullPath(std::wstring& out) const;
     virtual DirNode*        AsDir() { return nullptr; }
@@ -40,7 +41,7 @@ public:
     void                    SetCompressed() { m_compressed = true; }
     bool                    IsCompressed() const { return m_compressed; }
 protected:
-    const std::shared_ptr<DirNode> m_parent;
+    const std::weak_ptr<DirNode> m_parent;
     const std::wstring      m_name;
     bool                    m_compressed = false;
 };

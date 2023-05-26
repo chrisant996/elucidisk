@@ -1058,7 +1058,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
         for (const auto arc : m_rings[depth])
         {
             const bool isFile = !!arc.m_node->AsFile();
-            if (isFile && !arc.m_node->GetParent()->Finished())
+            if (isFile && !arc.m_node->IsParentFinished())
                 continue;
 
             SPI<ID2D1Geometry> spGeometry;
@@ -1100,7 +1100,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
         for (const auto arc : m_rings[depth])
         {
             const bool isFile = !!arc.m_node->AsFile();
-            if (isFile && !arc.m_node->GetParent()->Finished())
+            if (isFile && !arc.m_node->IsParentFinished())
                 continue;
 
             SPI<ID2D1Geometry> spGeometry;

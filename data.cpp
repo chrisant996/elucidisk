@@ -65,6 +65,12 @@ Node::~Node()
 #endif
 }
 
+bool Node::IsParentFinished() const
+{
+    std::shared_ptr<DirNode> parent = GetParent();
+    return parent && parent->Finished();
+}
+
 void Node::GetFullPath(std::wstring& out) const
 {
     build_full_path(out, this);
@@ -96,11 +102,11 @@ std::shared_ptr<DirNode> DirNode::AddDir(const WCHAR* name)
 
         m_count_dirs++;
 
-        DirNode* parent(m_parent.get());
+        std::shared_ptr<DirNode> parent(m_parent.lock());
         while (parent)
         {
             parent->m_count_dirs++;
-            parent = parent->m_parent.get();
+            parent = parent->m_parent.lock();
         }
     }
 
@@ -120,12 +126,12 @@ std::shared_ptr<FileNode> DirNode::AddFile(const WCHAR* name, ULONGLONG size)
         m_size += size;
         m_count_files++;
 
-        DirNode* parent(m_parent.get());
+        std::shared_ptr<DirNode> parent(m_parent.lock());
         while (parent)
         {
             parent->m_size += size;
             parent->m_count_files++;
-            parent = parent->m_parent.get();
+            parent = parent->m_parent.lock();
         }
     }
 
@@ -157,13 +163,13 @@ void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
         {
             if (iter->get() == dir)
             {
-                DirNode* parent(this);
+                std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
                 while (parent)
                 {
                     parent->m_size -= dir->GetSize();
                     parent->m_count_dirs -= dir->CountDirs();
                     parent->m_count_files -= dir->CountFiles();
-                    parent = parent->m_parent.get();
+                    parent = parent->m_parent.lock();
                 }
 
                 m_dirs.erase(iter);
@@ -178,12 +184,12 @@ void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
         {
             if (iter->get() == file)
             {
-                DirNode* parent(this);
+                std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
                 while (parent)
                 {
                     parent->m_size -= file->GetSize();
                     parent->m_count_files--;
-                    parent = parent->m_parent.get();
+                    parent = parent->m_parent.lock();
                 }
 
                 m_files.erase(iter);

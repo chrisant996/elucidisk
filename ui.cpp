@@ -652,7 +652,13 @@ void MainWindow::Rescan()
     for (const auto root : m_original_roots)
         paths.emplace_back(root->GetName());
 
-    Scan(int(paths.size()), paths.data(), true/*rescan*/);
+// TODO: I want some way to refresh the original scan, OR refresh the current
+// root.  But it isn't yet possible to scan a subtree; only top down scanning
+// is currently implemented.
+    //const bool rescan = !(m_roots.size() > 1 || (m_roots.size() == 1 && !m_roots[0]->GetParent()));
+    const bool rescan = false;
+
+    Scan(int(paths.size()), paths.data(), rescan);
 }
 
 void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node, const bool is_free)
