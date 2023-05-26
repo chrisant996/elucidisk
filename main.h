@@ -16,6 +16,7 @@ void WriteRegLong(const WCHAR* name, LONG value);
 
 extern bool g_use_compressed_size;
 extern bool g_show_free_space;
+extern bool g_show_names;
 
 //----------------------------------------------------------------------------
 // Smart pointer for AddRef/Release refcounting.

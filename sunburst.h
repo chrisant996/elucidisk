@@ -7,10 +7,18 @@
 #include <d3d11.h>
 #include <d2d1.h>
 #include <d2d1_1.h>
+#include <dwrite.h>
+#include <dwrite_1.h>
+#include <dwrite_2.h>
+#include "TextOnPath/PathTextRenderer.h"
 
 class DirNode;
 
 HRESULT InitializeD2D();
+HRESULT InitializeDWrite();
+
+bool GetD2DFactory(ID2D1Factory** ppFactory);
+bool GetDWriteFactory(IDWriteFactory2** ppFactory);
 
 class DirectHwndRenderTarget
 {
@@ -18,24 +26,36 @@ public:
                             DirectHwndRenderTarget();
                             ~DirectHwndRenderTarget();
 
-    HRESULT                 CreateDeviceResources(HWND hwnd);
+    HRESULT                 CreateDeviceResources(HWND hwnd, const DpiScaler& dpi);
     HRESULT                 ResizeDeviceResources();
     void                    ReleaseDeviceResources();
 
     ID2D1Factory*           Factory() const { return m_spFactory; }
+    IDWriteFactory*         DWriteFactory() const { return m_spDWriteFactory; }
     ID2D1RenderTarget*      Target() const { return m_spTarget; }
 
     ID2D1SolidColorBrush*   LineBrush() const { return m_spLineBrush; }
     ID2D1SolidColorBrush*   FileLineBrush() const { return m_spFileLineBrush; }
     ID2D1SolidColorBrush*   FillBrush() const { return m_spFillBrush; }
 
+    ID2D1DeviceContext*     Context() const { return m_spContext; }
+    IDWriteTextFormat*      TextFormat() const { return m_spTextFormat; }
+    PathTextRenderer*       TextRenderer() const { return m_spPathTextRenderer; }
+
 private:
     HWND                        m_hwnd = 0;
     SPI<ID2D1Factory>           m_spFactory;
+    SPI<IDWriteFactory2>        m_spDWriteFactory;
     SPI<ID2D1HwndRenderTarget>  m_spTarget;
+
     SPI<ID2D1SolidColorBrush>   m_spLineBrush;
     SPI<ID2D1SolidColorBrush>   m_spFileLineBrush;
     SPI<ID2D1SolidColorBrush>   m_spFillBrush;
+
+    SPQI<ID2D1DeviceContext>    m_spContext;
+    SPI<IDWriteTextFormat>      m_spTextFormat;
+    SPI<IDWriteRenderingParams> m_spRenderingParams;
+    SPI<PathTextRenderer>       m_spPathTextRenderer;
 };
 
 class Sunburst
@@ -72,9 +92,11 @@ protected:
     std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring);
 #endif
     bool                    MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, FLOAT inner_radius, FLOAT outer_radius, ID2D1Geometry** ppGeometry);
+    void                    DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT radius);
 
 private:
     DpiScaler               m_dpi;
+    FLOAT                   m_min_arc_text_len = 0;
     D2D1_RECT_F             m_bounds = D2D1::RectF();
     D2D1_POINT_2F           m_center = D2D1::Point2F();
     UnitScale               m_units = UnitScale::MB;

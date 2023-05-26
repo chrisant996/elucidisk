@@ -13,6 +13,7 @@ static const WCHAR c_reg_root[] = TEXT("Software\\Elucidisk");
 
 bool g_use_compressed_size = false;
 bool g_show_free_space = true;
+bool g_show_names = true;
 
 int PASCAL WinMain(
     _In_ HINSTANCE hinstCurrent,
@@ -35,11 +36,15 @@ int PASCAL WinMain(
 
     // Create UI.
 
+    CoInitialize(0);
+
     InitCommonControls();
     InitializeD2D();
+    InitializeDWrite();
 
     g_use_compressed_size = !!ReadRegLong(TEXT("UseCompressedSize"), false);
     g_show_free_space = !!ReadRegLong(TEXT("ShowFreeSpace"), true);
+    g_show_names = !!ReadRegLong(TEXT("ShowNames"), true);
 
     const HWND hwnd = MakeUi(hinstCurrent, argc, argv);
 

@@ -4,13 +4,18 @@
 #include "main.h"
 #include "sunburst.h"
 #include "data.h"
+#include "TextOnPath/PathTextRenderer.h"
 #include <cmath>
 
 static ID2D1Factory* s_pD2DFactory = nullptr;
+static IDWriteFactory2* s_pDWriteFactory = nullptr;
 
 constexpr FLOAT M_PI = 3.14159265358979323846f;
 constexpr int c_centerRadius = 50;
 constexpr FLOAT c_rotation = -90.0f;
+
+constexpr WCHAR c_arcfontface[] = TEXT("Segoe UI");
+constexpr FLOAT c_arcfontsize = 8.0f;
 
 #ifdef USE_MIN_ARC_LENGTH
 # define _PASS_MIN_ARC_LENGTH   , outer_radius, mx.min_arc
@@ -28,14 +33,28 @@ constexpr int c_retrograde_depths = 10;
 
 HRESULT InitializeD2D()
 {
-    CoInitialize(0);
-
     return D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED, __uuidof(ID2D1Factory), 0, reinterpret_cast<void**>(&s_pD2DFactory));
 }
 
-static bool GetD2DFactory(ID2D1Factory** ppFactory)
+HRESULT InitializeDWrite()
+{
+    return DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory2), reinterpret_cast<IUnknown**>(&s_pDWriteFactory));
+}
+
+bool GetD2DFactory(ID2D1Factory** ppFactory)
 {
     ID2D1Factory* pFactory = s_pD2DFactory;
+    if (!pFactory)
+        return false;
+
+    pFactory->AddRef();
+    *ppFactory = pFactory;
+    return true;
+}
+
+bool GetDWriteFactory(IDWriteFactory2** ppFactory)
+{
+    IDWriteFactory2* pFactory = s_pDWriteFactory;
     if (!pFactory)
         return false;
 
@@ -234,13 +253,15 @@ DirectHwndRenderTarget::~DirectHwndRenderTarget()
     assert(!m_hwnd);
 }
 
-HRESULT DirectHwndRenderTarget::CreateDeviceResources(const HWND hwnd)
+HRESULT DirectHwndRenderTarget::CreateDeviceResources(const HWND hwnd, const DpiScaler& dpi)
 {
     assert(!m_hwnd || hwnd == m_hwnd);
 
     if (hwnd == m_hwnd && m_spTarget)
         return S_OK;
     if (!m_spFactory && !GetD2DFactory(&m_spFactory))
+        return E_UNEXPECTED;
+    if (!m_spDWriteFactory && !GetDWriteFactory(&m_spDWriteFactory))
         return E_UNEXPECTED;
 
     m_hwnd = hwnd;
@@ -264,6 +285,41 @@ LError:
     ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spLineBrush));
     ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.75f), &m_spFileLineBrush));
     ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spFillBrush));
+
+    SPI<IDWriteRenderingParams> spRenderingParams;
+    ERRJMP(m_spDWriteFactory->CreateRenderingParams(&spRenderingParams));
+
+    // Custom text rendering param object is created that uses all default
+    // values except for the rendering mode which is now set to outline.  The
+    // outline mode is much faster in this case as every time text is relaid
+    // out on the path, it is rasterized as geometry.  This saves the extra
+    // step of trying to find the text bitmaps in the font cache and then
+    // repopulating the cache with the new ones.  Since the text may rotate
+    // differently from frame to frame, new glyph bitmaps would be generated
+    // often anyway.
+    ERRJMP(m_spDWriteFactory->CreateCustomRenderingParams(
+            spRenderingParams->GetGamma(),
+            spRenderingParams->GetEnhancedContrast(),
+            spRenderingParams->GetClearTypeLevel(),
+            spRenderingParams->GetPixelGeometry(),
+            DWRITE_RENDERING_MODE_OUTLINE,
+            &m_spRenderingParams));
+
+    ERRJMP(m_spDWriteFactory->CreateTextFormat(
+            c_arcfontface,
+            nullptr,
+            DWRITE_FONT_WEIGHT_REGULAR,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            FLOAT(-dpi.PointSizeToHeight(c_arcfontsize)),
+            TEXT("en-US"),
+            &m_spTextFormat));
+
+    ERRJMP(m_spContext.HrQuery(m_spTarget));
+    m_spContext->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+    m_spContext->SetTextRenderingParams(m_spRenderingParams);
+
+    m_spPathTextRenderer = new PathTextRenderer(dpi.ScaleF(96));
 
     return S_OK;
 }
@@ -289,10 +345,15 @@ HRESULT DirectHwndRenderTarget::ResizeDeviceResources()
 
 void DirectHwndRenderTarget::ReleaseDeviceResources()
 {
+    m_spPathTextRenderer.Release();
+    m_spRenderingParams.Release();
+    m_spTextFormat.Release();
     m_spFillBrush.Release();
     m_spFileLineBrush.Release();
     m_spLineBrush.Release();
+    m_spContext.Release();
     m_spTarget.Release();
+    m_spDWriteFactory.Release();
     m_spFactory.Release();
     m_hwnd = 0;
 }
@@ -800,6 +861,62 @@ inline bool is_highlight(const std::shared_ptr<Node>& highlight, const std::shar
     return highlight && highlight == node && is_root_finished(node);
 }
 
+void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT radius)
+{
+    if (ArcLength(arc.m_end - arc.m_start, radius) < m_min_arc_text_len)
+        return;
+
+    IDWriteFactory* pFactory = target.DWriteFactory();
+    if (!pFactory)
+        return;
+
+    std::wstring text;
+    text.append(TEXT(" "));
+    text.append(arc.m_node->GetName());
+    text.append(TEXT(" "));
+
+    SPI<IDWriteTextLayout> spTextLayout;
+// TODO: The 1000 and 200 are placeholders.
+    if (FAILED(pFactory->CreateTextLayout(text.c_str(), UINT32(text.length()), target.TextFormat(), 1000.0f, 200.0f, &spTextLayout)))
+        return;
+
+    const FLOAT start = arc.m_start + c_rotation;
+    const FLOAT end = arc.m_end + c_rotation;
+
+    D2D1_POINT_2F outer_start_point = MakePoint(m_center, radius, start);
+    D2D1_POINT_2F outer_end_point = MakePoint(m_center, radius, end);
+
+    SPI<ID2D1PathGeometry> spGeometry;
+    if (SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
+    {
+        SPI<ID2D1GeometrySink> spSink;
+        if (SUCCEEDED(spGeometry->Open(&spSink)))
+        {
+            spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+            spSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_HOLLOW);
+
+            D2D1_ARC_SEGMENT outer;
+            outer.size = D2D1::SizeF(radius, radius);
+            outer.sweepDirection = D2D1_SWEEP_DIRECTION_CLOCKWISE;
+            outer.point = outer_end_point;
+            outer.rotationAngle = start;
+            outer.arcSize = GetArcSize(start, end);
+            spSink->AddArc(outer);
+
+            spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            spSink->Close();
+        }
+
+        PathTextDrawingContext context;
+        context.brush.Set(target.LineBrush());
+        context.geometry.Set(spGeometry);
+        context.d2DContext.Set(target.Context());
+
+        if (target.TextRenderer()->TestFit(&context, spTextLayout))
+            spTextLayout->Draw(&context, target.TextRenderer(), 0, 0);
+    }
+}
+
 void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight)
 {
     ID2D1RenderTarget* pTarget = target.Target();
@@ -818,6 +935,8 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
     ID2D1SolidColorBrush* pLineBrush = target.LineBrush();
     ID2D1SolidColorBrush* pFileLineBrush = target.FileLineBrush();
     ID2D1SolidColorBrush* pFillBrush = target.FillBrush();
+
+    const bool show_names = (g_show_names && target.DWriteFactory());
 
     // Outer boundary outline.
 
@@ -920,6 +1039,8 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
     // Rings.
 
+    m_min_arc_text_len = FLOAT(m_dpi.Scale(20));
+
     size_t depth;
     FLOAT inner_radius = mx.center_radius;
     for (depth = 0; depth < m_rings.size(); ++depth)
@@ -931,6 +1052,8 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
         const FLOAT outer_radius = inner_radius + thickness;
         if (outer_radius > mx.max_radius)
             break;
+
+        const FLOAT arctext_radius = outer_radius - (-m_dpi.PointSizeToHeight(c_arcfontsize));
 
         for (const auto arc : m_rings[depth])
         {
@@ -950,6 +1073,9 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
                 pTarget->FillGeometry(spGeometry, pFillBrush);
                 pTarget->DrawGeometry(spGeometry, isFile ? pFileLineBrush : pLineBrush, mx.stroke);
+
+                if (show_names)
+                    DrawArcText(target, arc, arctext_radius);
 
                 if (isHighlight)
                 {

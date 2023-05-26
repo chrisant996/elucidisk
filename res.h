@@ -14,6 +14,7 @@
 
 #define IDM_OPTION_COMPRESSED   2100
 #define IDM_OPTION_FREESPACE    2101
+#define IDM_OPTION_NAMES        2102
 
 #define IDM_REFRESH             2200
 #define IDM_BACK                2201
