@@ -1394,16 +1394,19 @@ void MainWindow::OnLayout(RECT* prc)
     m_buttons.Attach(m_hwnd);
 
     rc.right = prc->right - margin;
-    rc.top = prc->top + margin;
+    rc.bottom = prc->bottom - m_margin_reserve * 6 - m_top_reserve * 4;
     rc.left = rc.right - dim;
-    rc.bottom = rc.top + dim;
-    m_buttons.AddButton(IDM_REFRESH, rc);
+    rc.top = rc.bottom - dim;
+// TODO: Icon.
+    m_buttons.AddButton(IDM_REFRESH, rc, TEXT("!"));
 
-    OffsetRect(&rc, 0, dim + margin);
-    m_buttons.AddButton(IDM_UP, rc);
+    OffsetRect(&rc, 0, 0 - (dim + margin));
+// TODO: Icon.
+    m_buttons.AddButton(IDM_BACK, rc, TEXT("\u2190"));
 
-    OffsetRect(&rc, 0, dim + margin);
-    m_buttons.AddButton(IDM_BACK, rc);
+    OffsetRect(&rc, 0, 0 - (dim + margin));
+// TODO: Icon.
+    m_buttons.AddButton(IDM_UP, rc, TEXT("\u2191"));
 
     rc.left = prc->left + margin;
     rc.bottom = prc->bottom - margin;
@@ -1412,7 +1415,7 @@ void MainWindow::OnLayout(RECT* prc)
     m_buttons.AddButton(IDM_SUMMARY, rc, TEXT("Summary"));
 
     rc.left = prc->left + margin;
-    rc.top = prc->top + m_top_reserve + m_margin_reserve + m_top_reserve + m_top_reserve + margin + margin;
+    rc.top = prc->top + m_top_reserve + m_margin_reserve + m_top_reserve + m_top_reserve + margin;
     rc.right = rc.left + dim;
     rc.bottom = rc.top + dim;
 #if 0
