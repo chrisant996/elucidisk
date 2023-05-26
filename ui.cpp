@@ -12,6 +12,23 @@
 #include <windowsx.h>
 #include <iosfwd>
 
+void inset_rect_for_stroke(D2D1_RECT_F& rect, FLOAT stroke)
+{
+    rect.left += 0.5f;
+    rect.top += 0.5f;
+    rect.right -= 0.5f;
+    rect.bottom -= 0.5f;
+
+    if (stroke > 1.0f)
+    {
+        stroke -= 1.0f;
+        rect.left += stroke / 2;
+        rect.top += stroke / 2;
+        rect.right -= stroke / 2;
+        rect.bottom -= stroke / 2;
+    }
+}
+
 //----------------------------------------------------------------------------
 // ScannerThread.
 
@@ -270,6 +287,151 @@ void SizeTracker::WritePosition()
 }
 
 //----------------------------------------------------------------------------
+// Buttons.
+
+class Buttons
+{
+public:
+    void                    Attach(HWND hwnd);
+    void                    OnDpiChanged(const DpiScaler& dpi);
+    void                    AddButton(UINT id, const RECT& rect);
+    void                    RenderButtons(DirectHwndRenderTarget& target);
+    void                    OnMouseMessage(UINT msg, const POINT* pt);
+    void                    OnCancelMode();
+
+protected:
+    int                     HitTest(const POINT* pt) const;
+    void                    InvalidateButton(int index) const;
+    void                    SetHover(int hover, int pressed);
+
+private:
+    HWND                    m_hwnd = 0;
+    std::vector<UINT>       m_ids;
+    std::vector<RECT>       m_rects;
+    int                     m_hover = -1;
+    int                     m_pressed = -1;
+    DpiScaler               m_dpi;
+};
+
+void Buttons::Attach(HWND hwnd)
+{
+    OnCancelMode();
+    m_ids.clear();
+    m_rects.clear();
+    m_hwnd = hwnd;
+}
+
+void Buttons::OnDpiChanged(const DpiScaler& dpi)
+{
+    m_dpi.OnDpiChanged(dpi);
+}
+
+void Buttons::AddButton(UINT id, const RECT& rect)
+{
+    m_ids.emplace_back(id);
+    m_rects.emplace_back(rect);
+}
+
+void Buttons::RenderButtons(DirectHwndRenderTarget& target)
+{
+    for (size_t ii = 0; ii < m_ids.size(); ++ii)
+    {
+        const RECT& rect = m_rects[ii];
+        D2D1_RECT_F rectF;
+        rectF.left = FLOAT(rect.left);
+        rectF.top = FLOAT(rect.top);
+        rectF.right = FLOAT(rect.right);
+        rectF.bottom = FLOAT(rect.bottom);
+
+        if (m_hover == ii && m_pressed == ii)
+        {
+            target.FillBrush()->SetColor(D2D1::ColorF(D2D1::ColorF::LightSteelBlue));
+            target.Target()->FillRectangle(rectF, target.FillBrush());
+            target.FillBrush()->SetColor(D2D1::ColorF(D2D1::ColorF::Black));
+        }
+        else
+        {
+            target.FillBrush()->SetColor(D2D1::ColorF((m_hover == ii) ? D2D1::ColorF::Black : 0xD0D0D0));
+        }
+
+        const FLOAT stroke = FLOAT(m_dpi.Scale(1));
+        inset_rect_for_stroke(rectF, stroke);
+        target.Target()->DrawRectangle(rectF, target.FillBrush(), stroke);
+    }
+}
+
+void Buttons::OnMouseMessage(UINT msg, const POINT* pt)
+{
+    const int hover = HitTest(pt);
+
+    switch (msg)
+    {
+    case WM_MOUSEMOVE:
+        SetHover(hover, m_pressed);
+        break;
+    case WM_LBUTTONDOWN:
+        SetHover(hover, hover);
+        break;
+    case WM_LBUTTONUP:
+        if (m_hover >= 0 && m_hover < m_ids.size() && m_hover == m_pressed)
+            SendMessage(m_hwnd, WM_COMMAND, GET_WM_COMMAND_MPS(m_ids[m_hover], m_hwnd, 0));
+        m_pressed = -1;
+        InvalidateButton(m_hover);
+        break;
+    }
+}
+
+void Buttons::OnCancelMode()
+{
+    SetHover(-1, -1);
+}
+
+int Buttons::HitTest(const POINT* pt) const
+{
+    if (pt)
+    {
+        for (size_t ii = 0; ii < m_ids.size(); ++ii)
+        {
+            if (PtInRect(&m_rects[ii], *pt))
+                return int(ii);
+        }
+    }
+    return -1;
+}
+
+void Buttons::InvalidateButton(int index) const
+{
+    assert(m_hwnd);
+
+    if (index >= 0 && index < m_rects.size())
+    {
+// TODO: The D2D/GDI hybrid painting doesn't mix well with partial invalidation.
+        //InvalidateRect(m_hwnd, &m_rects[index], false);
+        InvalidateRect(m_hwnd, nullptr, false);
+    }
+}
+
+void Buttons::SetHover(int hover, int pressed)
+{
+    if (m_hover != hover || m_pressed != pressed)
+    {
+        InvalidateButton(m_hover);
+        m_hover = hover;
+        m_pressed = pressed;
+        InvalidateButton(m_hover);
+    }
+
+    if (m_hover >= 0)
+    {
+        TRACKMOUSEEVENT track = { sizeof(track) };
+        track.dwFlags = TME_LEAVE;
+        track.hwndTrack = m_hwnd;
+        track.dwHoverTime = HOVER_DEFAULT;
+        _TrackMouseEvent(&track);
+    }
+}
+
+//----------------------------------------------------------------------------
 // MainWindow.
 
 class MainWindow
@@ -299,6 +461,7 @@ protected:
     void                    DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node, bool free_space);
 
     void                    Expand(const std::shared_ptr<Node>& node);
+    void                    Up();
     void                    Back();
     void                    Forward();
     void                    DeleteNode(const std::shared_ptr<Node>& node);
@@ -312,6 +475,7 @@ private:
     HFONT                   m_hfont = 0;
     HFONT                   m_hfontCenter = 0;
     DpiScaler               m_dpi;
+    LONG                    m_top_reserve = 0;
     SizeTracker             m_sizeTracker;
     LONG                    m_cxNumberArea = 0;
     bool                    m_inWmDpiChanged = false;
@@ -326,6 +490,7 @@ private:
 
     DirectHwndRenderTarget  m_directRender;
     Sunburst                m_sunburst;
+    Buttons                 m_buttons;
 
     std::shared_ptr<Node>   m_hover_node;
     bool                    m_hover_free = false;
@@ -435,6 +600,12 @@ void MainWindow::Expand(const std::shared_ptr<Node>& node)
     m_back_stack.emplace_back(back);
 
     InvalidateRect(m_hwnd, nullptr, false);
+}
+
+void MainWindow::Up()
+{
+    if (m_roots.size() == 1)
+        Expand(m_roots[0]);
 }
 
 void MainWindow::Back()
@@ -642,14 +813,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             GetCursorPos(&pt);
             ScreenToClient(m_hwnd, &pt);
 
-            TEXTMETRIC tm = { 0 };
-            if (m_hfont)
-            {
-                SelectFont(ps.hdc, m_hfont);
-                GetTextMetrics(ps.hdc, &tm);
-            }
-
-            const LONG top_reserve = tm.tmHeight; // Space for full path.
             const LONG margin_reserve = m_dpi.Scale(3);
 
             // D2D rendering.
@@ -664,12 +827,14 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 pTarget->SetTransform(D2D1::Matrix3x2F::Identity());
                 pTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
 
-                D2D1_SIZE_F rtSize = pTarget->GetSize();
-                rtSize.height -= margin_reserve + top_reserve;
+// TODO: Don't paint sunburst if the area isn't invalidated.
+                const D2D1_SIZE_F rtSize = pTarget->GetSize();
+                const FLOAT width = rtSize.width - (margin_reserve + m_dpi.Scale(32) + margin_reserve) * 2;
+                const FLOAT height = rtSize.height - (margin_reserve + m_top_reserve);
 
-                const FLOAT extent = std::min<FLOAT>(rtSize.width, rtSize.height);
+                const FLOAT extent = std::min<FLOAT>(width, height);
                 const FLOAT xx = (rtSize.width - extent) / 2;
-                const FLOAT yy = margin_reserve + top_reserve + (rtSize.height - extent) / 2;
+                const FLOAT yy = margin_reserve + m_top_reserve + (height - extent) / 2;
                 const D2D1_RECT_F bounds = D2D1::RectF(xx, yy, xx + extent, yy + extent);
 
                 static size_t s_gen = 0;
@@ -697,6 +862,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     m_hover_node.reset();
                     m_hover_free = false;
                 }
+
+                m_buttons.RenderButtons(m_directRender);
 
                 if (FAILED(pTarget->EndDraw()))
                     m_directRender.ReleaseDeviceResources();
@@ -737,7 +904,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 SIZE size;
                 GetTextExtentPoint32(ps.hdc, text.c_str(), int(text.length()), &size);
 
-                rcClient.top += margin_reserve + top_reserve;
+                rcClient.top += margin_reserve + m_top_reserve;
                 LONG xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
                 LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
                 SetBkMode(ps.hdc, TRANSPARENT);
@@ -780,11 +947,14 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 track.dwHoverTime = HOVER_DEFAULT;
                 _TrackMouseEvent(&track);
             }
+
+            m_buttons.OnMouseMessage(msg, &pt);
         }
         break;
     case WM_MOUSELEAVE:
         m_hover_node.reset();
         m_hover_free = false;
+        m_buttons.OnCancelMode();
         InvalidateRect(m_hwnd, nullptr, false);
         break;
 
@@ -807,6 +977,18 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
             if (node && is_root_finished(node))
                 Expand(node);
+
+            m_buttons.OnMouseMessage(msg, &pt);
+        }
+        break;
+
+    case WM_LBUTTONUP:
+        {
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+
+            m_buttons.OnMouseMessage(msg, &pt);
         }
         break;
 
@@ -912,12 +1094,19 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         goto LDefault;
 
     case WM_SIZE:
-        m_directRender.ResizeDeviceResources();
-        if (m_hover_node)
         {
-            m_hover_node.reset();
-            m_hover_free = false;
-            InvalidateRect(m_hwnd, nullptr, false);
+            m_directRender.ResizeDeviceResources();
+
+            RECT rcClient;
+            GetClientRect(m_hwnd, &rcClient);
+            OnLayout(&rcClient);
+
+            if (m_hover_node)
+            {
+                m_hover_node.reset();
+                m_hover_free = false;
+                InvalidateRect(m_hwnd, nullptr, false);
+            }
         }
         goto LDefault;
 
@@ -928,8 +1117,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             Rescan();
             break;
         case VK_UP:
-            if (m_roots.size() == 1)
-                Expand(m_roots[0]);
+            Up();
             break;
         case VK_LEFT:
         case VK_BACK:
@@ -991,7 +1179,18 @@ LDefault:
 
 void MainWindow::OnCommand(WORD id, HWND hwndCtrl, WORD code)
 {
-// TODO: Handle command IDs.
+    switch (id)
+    {
+    case IDM_REFRESH:
+        Rescan();
+        break;
+    case IDM_UP:
+        Up();
+        break;
+    case IDM_BACK:
+        Back();
+        break;
+    }
 }
 
 void MainWindow::OnDpiChanged(const DpiScaler& dpi)
@@ -1012,6 +1211,10 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
         SaveDC(hdc);
         SelectFont(hdc, m_hfont);
 
+        TEXTMETRIC tm;
+        GetTextMetrics(hdc, &tm);
+        m_top_reserve = tm.tmHeight; // Space for full path.
+
         LONG cxMax = 0;
         for (WCHAR ch = '0'; ch <= '9'; ++ch)
         {
@@ -1029,6 +1232,38 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
     }
 
     m_sunburst.OnDpiChanged(dpi);
+    m_buttons.OnDpiChanged(dpi);
+}
+
+void MainWindow::OnLayout(RECT* prc)
+{
+    RECT rc;
+    const LONG dim = m_dpi.Scale(32);
+    const LONG margin = m_dpi.Scale(8);
+
+    prc->top += m_top_reserve;
+
+    m_buttons.Attach(m_hwnd);
+
+#if 0
+    rc.left = prc->left + margin;
+    rc.bottom = prc->bottom - margin;
+    rc.right = rc.left + dim;
+    rc.top = rc.bottom - dim;
+    m_buttons.AddButton(/*bottom left*/, rc);
+#endif
+
+    rc.right = prc->right - margin;
+    rc.top = prc->top + margin;
+    rc.left = rc.right - dim;
+    rc.bottom = rc.top + dim;
+    m_buttons.AddButton(IDM_REFRESH, rc);
+
+    OffsetRect(&rc, 0, dim + margin);
+    m_buttons.AddButton(IDM_UP, rc);
+
+    OffsetRect(&rc, 0, dim + margin);
+    m_buttons.AddButton(IDM_BACK, rc);
 }
 
 LRESULT MainWindow::OnDestroy()
