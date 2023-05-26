@@ -223,6 +223,8 @@ void HSLColorType::AdjustLuminance(FLOAT delta)
 //----------------------------------------------------------------------------
 // DirectHwndRenderTarget.
 
+#define ERRJMP(expr)      do { hr = (expr); assert(SUCCEEDED(hr)); if (FAILED(hr)) goto LError; } while (false)
+
 DirectHwndRenderTarget::DirectHwndRenderTarget()
 {
 }
@@ -236,57 +238,49 @@ HRESULT DirectHwndRenderTarget::CreateDeviceResources(const HWND hwnd)
 {
     assert(!m_hwnd || hwnd == m_hwnd);
 
-    if (hwnd == m_hwnd && m_pTarget)
+    if (hwnd == m_hwnd && m_spTarget)
         return S_OK;
-    if (!m_pFactory && !GetD2DFactory(&m_pFactory))
+    if (!m_spFactory && !GetD2DFactory(&m_spFactory))
         return E_UNEXPECTED;
 
     m_hwnd = hwnd;
-    ReleaseI(m_pTarget);
+    m_spTarget.Release();
 
     RECT rc;
     GetClientRect(m_hwnd, &rc);
     D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
 
-    HRESULT hr = m_pFactory->CreateHwndRenderTarget(
+    HRESULT hr = m_spFactory->CreateHwndRenderTarget(
         D2D1::RenderTargetProperties(),
         D2D1::HwndRenderTargetProperties(m_hwnd, size),
-        &m_pTarget);
+        &m_spTarget);
     if (FAILED(hr))
     {
 LError:
-        ReleaseI(m_pTarget);
+        ReleaseDeviceResources();
         return hr;
     }
 
-    hr = m_pTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_pLineBrush);
-    if (FAILED(hr))
-        goto LError;
-
-    hr = m_pTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.75f), &m_pFileLineBrush);
-    if (FAILED(hr))
-        goto LError;
-
-    hr = m_pTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_pFillBrush);
-    if (FAILED(hr))
-        goto LError;
+    ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spLineBrush));
+    ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.75f), &m_spFileLineBrush));
+    ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spFillBrush));
 
     return S_OK;
 }
 
 HRESULT DirectHwndRenderTarget::ResizeDeviceResources()
 {
-    if (!m_hwnd || !m_pTarget)
+    if (!m_hwnd || !m_spTarget)
         return S_OK;
 
     RECT rc;
     GetClientRect(m_hwnd, &rc);
     D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
 
-    HRESULT hr = m_pTarget->Resize(size);
+    HRESULT hr = m_spTarget->Resize(size);
     if (FAILED(hr))
     {
-        ReleaseI(m_pTarget);
+        ReleaseDeviceResources();
         return hr;
     }
 
@@ -295,11 +289,11 @@ HRESULT DirectHwndRenderTarget::ResizeDeviceResources()
 
 void DirectHwndRenderTarget::ReleaseDeviceResources()
 {
-    ReleaseI(m_pLineBrush);
-    ReleaseI(m_pFileLineBrush);
-    ReleaseI(m_pFillBrush);
-    ReleaseI(m_pTarget);
-    ReleaseI(m_pFactory);
+    m_spFillBrush.Release();
+    m_spFileLineBrush.Release();
+    m_spLineBrush.Release();
+    m_spTarget.Release();
+    m_spFactory.Release();
     m_hwnd = 0;
 }
 
@@ -733,14 +727,14 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
     D2D1_POINT_2F outer_start_point = MakePoint(m_center, outer_radius, start);
     D2D1_POINT_2F outer_end_point = MakePoint(m_center, outer_radius, end);
 
-    ID2D1PathGeometry* pGeometry = nullptr;
-    if (SUCCEEDED(target.Factory()->CreatePathGeometry(&pGeometry)))
+    SPI<ID2D1PathGeometry> spGeometry;
+    if (SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
     {
-        ID2D1GeometrySink* pSink = nullptr;
-        if (SUCCEEDED(pGeometry->Open(&pSink)))
+        SPI<ID2D1GeometrySink> spSink;
+        if (SUCCEEDED(spGeometry->Open(&spSink)))
         {
-            pSink->SetFillMode(D2D1_FILL_MODE_WINDING);
-            pSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_FILLED);
+            spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+            spSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_FILLED);
 
             D2D1_ARC_SEGMENT outer;
             outer.size = D2D1::SizeF(outer_radius, outer_radius);
@@ -751,7 +745,7 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
                 outer.point = MakePoint(m_center, outer_radius, mid);
                 outer.rotationAngle = start;
                 outer.arcSize = GetArcSize(start, mid);
-                pSink->AddArc(outer);
+                spSink->AddArc(outer);
                 outer.point = outer_end_point;
                 outer.rotationAngle = mid;
                 outer.arcSize = GetArcSize(mid, end);
@@ -762,10 +756,10 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
                 outer.rotationAngle = start;
                 outer.arcSize = GetArcSize(start, end);
             }
-            pSink->AddArc(outer);
+            spSink->AddArc(outer);
 
             if (has_line)
-                pSink->AddLine(inner_end_point);
+                spSink->AddLine(inner_end_point);
 
             if (inner_radius > 0.0f)
             {
@@ -778,7 +772,7 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
                     inner.point = MakePoint(m_center, inner_radius, mid);
                     inner.rotationAngle = mid;
                     inner.arcSize = GetArcSize(mid, end);
-                    pSink->AddArc(inner);
+                    spSink->AddArc(inner);
                     inner.point = inner_start_point;
                     inner.rotationAngle = end;
                     inner.arcSize = GetArcSize(start, mid);
@@ -789,18 +783,16 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
                     inner.rotationAngle = end;
                     inner.arcSize = GetArcSize(start, end);
                 }
-                pSink->AddArc(inner);
+                spSink->AddArc(inner);
             }
 
-            pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
-
-            pSink->Close();
-            ReleaseI(pSink);
+            spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            spSink->Close();
         }
     }
 
-    *ppGeometry = pGeometry;
-    return !!pGeometry;
+    *ppGeometry = spGeometry.Transfer();
+    return !!*ppGeometry;
 }
 
 inline bool is_highlight(const std::shared_ptr<Node>& highlight, const std::shared_ptr<Node>& node)
@@ -811,15 +803,15 @@ inline bool is_highlight(const std::shared_ptr<Node>& highlight, const std::shar
 void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight)
 {
     ID2D1RenderTarget* pTarget = target.Target();
-    ID2D1Geometry* pHighlight = nullptr;
+    SPI<ID2D1Geometry> spHighlight;
 
     assert(m_bounds.left < m_bounds.right);
     assert(m_bounds.top < m_bounds.bottom);
 
-    ID2D1Layer* pFileLayer = nullptr;
+    SPI<ID2D1Layer> spFileLayer;
     D2D1_LAYER_PARAMETERS fileLayerParams = D2D1::LayerParameters(
         m_bounds, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.60f);
-    pTarget->CreateLayer(&pFileLayer);
+    pTarget->CreateLayer(&spFileLayer);
 
     SunburstMetrics mx(m_dpi, m_bounds);
 
@@ -848,8 +840,8 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
         ellipse.radiusX = mx.center_radius;
         ellipse.radiusY = mx.center_radius;
 
-        ID2D1EllipseGeometry* pCircle = nullptr;
-        if (SUCCEEDED(target.Factory()->CreateEllipseGeometry(ellipse, &pCircle)))
+        SPI<ID2D1EllipseGeometry> spCircle;
+        if (SUCCEEDED(target.Factory()->CreateEllipseGeometry(ellipse, &spCircle)))
         {
             if (m_roots.size() &&
                 (m_roots.size() > 1 || m_roots[0]->GetFreeSpace()) &&
@@ -865,20 +857,18 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
                     const bool isHighlight = (highlight == m_roots[ii]);
 
-                    ID2D1Geometry* pGeometry = nullptr;
-                    if (SUCCEEDED(MakeArcGeometry(target, start, free, 0.0f, mx.center_radius, &pGeometry)))
+                    SPI<ID2D1Geometry> spGeometry;
+                    if (SUCCEEDED(MakeArcGeometry(target, start, free, 0.0f, mx.center_radius, &spGeometry)))
                     {
                         pFillBrush->SetColor(MakeRootColor(isHighlight, false));
-                        pTarget->FillGeometry(pGeometry, pFillBrush);
-
-                        ReleaseI(pGeometry);
+                        pTarget->FillGeometry(spGeometry, pFillBrush);
+                        spGeometry.Release();
                     }
-                    if (g_show_free_space && SUCCEEDED(MakeArcGeometry(target, free, end, 0.0f, mx.center_radius, &pGeometry)))
+                    if (g_show_free_space && SUCCEEDED(MakeArcGeometry(target, free, end, 0.0f, mx.center_radius, &spGeometry)))
                     {
                         pFillBrush->SetColor(MakeRootColor(isHighlight, true));
-                        pTarget->FillGeometry(pGeometry, pFillBrush);
-
-                        ReleaseI(pGeometry);
+                        pTarget->FillGeometry(spGeometry, pFillBrush);
+                        spGeometry.Release();
                     }
 
                     end = start;
@@ -889,10 +879,10 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
             {
                 const bool isHighlight = (m_roots.size() && is_highlight(highlight, m_roots[0]));
                 pFillBrush->SetColor(MakeRootColor(isHighlight, false));
-                pTarget->FillGeometry(pCircle, pFillBrush);
+                pTarget->FillGeometry(spCircle, pFillBrush);
             }
 
-            pTarget->DrawGeometry(pCircle, pLineBrush, mx.stroke);
+            pTarget->DrawGeometry(spCircle, pLineBrush, mx.stroke);
 
             if (!g_show_free_space && m_roots.size() > 1)
             {
@@ -906,13 +896,11 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
                     prev = start;
                 }
             }
-
-            ReleaseI(pCircle);
         }
 
         if (highlight)
         {
-            ReleaseI(pHighlight);
+            spHighlight.Release();
 
             FLOAT end = m_start_angles[0];
             for (size_t ii = m_roots.size(); ii--;)
@@ -921,7 +909,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
                 if (highlight == m_roots[ii])
                 {
-                    if (SUCCEEDED(MakeArcGeometry(target, start, end, 0.0f, mx.center_radius, &pHighlight)))
+                    if (SUCCEEDED(MakeArcGeometry(target, start, end, 0.0f, mx.center_radius, &spHighlight)))
                         break;
                 }
 
@@ -950,30 +938,26 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
             if (isFile && !arc.m_node->GetParent()->Finished())
                 continue;
 
-            ID2D1Geometry* pGeometry = nullptr;
-            if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &pGeometry)))
+            SPI<ID2D1Geometry> spGeometry;
+            if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &spGeometry)))
             {
                 const bool isHighlight = is_highlight(highlight, arc.m_node);
 
                 pFillBrush->SetColor(MakeColor(arc, depth, isHighlight));
 
                 if (isFile)
-                    pTarget->PushLayer(fileLayerParams, pFileLayer);
+                    pTarget->PushLayer(fileLayerParams, spFileLayer);
 
-                pTarget->FillGeometry(pGeometry, pFillBrush);
-                pTarget->DrawGeometry(pGeometry, isFile ? pFileLineBrush : pLineBrush, mx.stroke);
+                pTarget->FillGeometry(spGeometry, pFillBrush);
+                pTarget->DrawGeometry(spGeometry, isFile ? pFileLineBrush : pLineBrush, mx.stroke);
 
                 if (isHighlight)
                 {
-                    ReleaseI(pHighlight);
-                    pHighlight = pGeometry;
-                    pHighlight->AddRef();
+                    spHighlight.Set(spGeometry);
                 }
 
                 if (isFile)
                     pTarget->PopLayer();
-
-                ReleaseI(pGeometry);
             }
         }
 
@@ -993,16 +977,14 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
             if (isFile && !arc.m_node->GetParent()->Finished())
                 continue;
 
-            ID2D1Geometry* pGeometry = nullptr;
-            if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &pGeometry)))
+            SPI<ID2D1Geometry> spGeometry;
+            if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &spGeometry)))
             {
                 pFillBrush->SetColor(D2D1::ColorF(isFile ? 0x999999 : 0x555555));
-                pTarget->FillGeometry(pGeometry, pFillBrush);
+                pTarget->FillGeometry(spGeometry, pFillBrush);
 
                 pFillBrush->SetColor(D2D1::ColorF(D2D1::ColorF::White));
-                pTarget->DrawGeometry(pGeometry, pFillBrush, mx.stroke / 2);
-
-                ReleaseI(pGeometry);
+                pTarget->DrawGeometry(spGeometry, pFillBrush, mx.stroke / 2);
             }
         }
 
@@ -1010,14 +992,11 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
     // Hover highlight.
 
-    if (pHighlight)
+    if (spHighlight)
     {
         if (!highlight->GetParent() || is_root_finished(highlight))
-            pTarget->DrawGeometry(pHighlight, pLineBrush, mx.stroke * 2.0f);
-        ReleaseI(pHighlight);
+            pTarget->DrawGeometry(spHighlight, pLineBrush, mx.stroke * 2.0f);
     }
-
-    ReleaseI(pFileLayer);
 }
 
 void Sunburst::FormatSize(const ULONGLONG _size, std::wstring& text, std::wstring& units, int places)

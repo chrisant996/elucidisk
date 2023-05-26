@@ -22,20 +22,20 @@ public:
     HRESULT                 ResizeDeviceResources();
     void                    ReleaseDeviceResources();
 
-    ID2D1Factory*           Factory() const { return m_pFactory; }
-    ID2D1RenderTarget*      Target() const { return m_pTarget; }
+    ID2D1Factory*           Factory() const { return m_spFactory; }
+    ID2D1RenderTarget*      Target() const { return m_spTarget; }
 
-    ID2D1SolidColorBrush*   LineBrush() const { return m_pLineBrush; }
-    ID2D1SolidColorBrush*   FileLineBrush() const { return m_pFileLineBrush; }
-    ID2D1SolidColorBrush*   FillBrush() const { return m_pFillBrush; }
+    ID2D1SolidColorBrush*   LineBrush() const { return m_spLineBrush; }
+    ID2D1SolidColorBrush*   FileLineBrush() const { return m_spFileLineBrush; }
+    ID2D1SolidColorBrush*   FillBrush() const { return m_spFillBrush; }
 
 private:
-    HWND                    m_hwnd = 0;
-    ID2D1Factory*           m_pFactory = nullptr;
-    ID2D1HwndRenderTarget*  m_pTarget = nullptr;
-    ID2D1SolidColorBrush*   m_pLineBrush = nullptr;
-    ID2D1SolidColorBrush*   m_pFileLineBrush = nullptr;
-    ID2D1SolidColorBrush*   m_pFillBrush = nullptr;
+    HWND                        m_hwnd = 0;
+    SPI<ID2D1Factory>           m_spFactory;
+    SPI<ID2D1HwndRenderTarget>  m_spTarget;
+    SPI<ID2D1SolidColorBrush>   m_spLineBrush;
+    SPI<ID2D1SolidColorBrush>   m_spFileLineBrush;
+    SPI<ID2D1SolidColorBrush>   m_spFillBrush;
 };
 
 class Sunburst

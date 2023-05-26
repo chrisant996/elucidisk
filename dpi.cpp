@@ -495,7 +495,7 @@ static HBITMAP ScaleWicBitmapToBitmap(IWICImagingFactory* pFactory, IWICBitmap* 
 
     BYTE* pBits;
     HBITMAP hBmp = CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, (void**)&pBits, nullptr, 0);
-    IWICBitmapScaler* pScaler = nullptr;
+    SPI<IWICBitmapScaler> spScaler;
     bool ok = false;
 
     do
@@ -503,22 +503,20 @@ static HBITMAP ScaleWicBitmapToBitmap(IWICImagingFactory* pFactory, IWICBitmap* 
         if (!hBmp)
             break;
 
-        if (FAILED(pFactory->CreateBitmapScaler(&pScaler)))
+        if (FAILED(pFactory->CreateBitmapScaler(&spScaler)))
             break;
 
         WICBitmapInterpolationMode const mode = WICBitmapInterpolationModeFant;
-        if (FAILED(pScaler->Initialize(pBmp, cx, cy, mode)))
+        if (FAILED(spScaler->Initialize(pBmp, cx, cy, mode)))
             break;
 
         WICRect rect = { 0, 0, cx, cy };
-        if (FAILED(pScaler->CopyPixels(&rect, cx * 4, cx * cy * 4, pBits)))
+        if (FAILED(spScaler->CopyPixels(&rect, cx * 4, cx * cy * 4, pBits)))
             break;
 
         ok = true;
     }
     while (false);
-
-    ReleaseI(pScaler);
 
     if (!ok)
     {
@@ -566,8 +564,8 @@ bool HIDPI_StretchBitmap(HBITMAP* phbm, int cxDstImg, int cyDstImg, int cColumns
         const HDC hdcDst = CreateCompatibleDC(0);
         const HDC hdcResize = CreateCompatibleDC(0);
 
-        IWICImagingFactory* pFactory = nullptr;
-        CoCreateInstance(CLSID_WICImagingFactory, 0, CLSCTX_INPROC_SERVER, __uuidof(IWICImagingFactory), (void**)&pFactory);
+        SPI<IWICImagingFactory> spFactory;
+        CoCreateInstance(CLSID_WICImagingFactory, 0, CLSCTX_INPROC_SERVER, __uuidof(IWICImagingFactory), (void**)&spFactory);
 
         // Ensure the input bitmap uses an alpha channel for transparency.
         HBITMAP hbmpInput = *phbm;
@@ -604,16 +602,16 @@ bool HIDPI_StretchBitmap(HBITMAP* phbm, int cxDstImg, int cyDstImg, int cColumns
                 // give up on using WIC and fall back to using StretchBlt,
                 // which uses an ugly pixel-doubling algorithm.
                 assert(false);
-                ReleaseI(pFactory);
+                spFactory.Release();
             }
         }
 
         // Create the WIC factory and bitmap.
-        IWICBitmap* pBmpFull = nullptr;
-        if (pFactory)
+        SPI<IWICBitmap> spBmpFull;
+        if (spFactory)
         {
-            if (FAILED(pFactory->CreateBitmapFromHBITMAP(hbmpInput, 0, WICBitmapUseAlpha, &pBmpFull)))
-                ReleaseI(pFactory);
+            if (FAILED(spFactory->CreateBitmapFromHBITMAP(hbmpInput, 0, WICBitmapUseAlpha, &spBmpFull)))
+                spFactory.Release();
         }
 
         // Create GDI objects to perform the scaling.
@@ -628,12 +626,12 @@ bool HIDPI_StretchBitmap(HBITMAP* phbm, int cxDstImg, int cyDstImg, int cColumns
         // tiles.
         for (int jj = 0, yDest = 0, yBmp = 0; jj < cRows; jj++, yDest += cyDstImg, yBmp += cySrcImg)
             for (int ii = 0, xDest = 0, xBmp = 0; ii < cColumns; ii++, xDest += cxDstImg, xBmp += cxSrcImg)
-                if (pFactory)
+                if (spFactory)
                 {
-                    IWICBitmap* pBmp;
-                    if (SUCCEEDED(pFactory->CreateBitmapFromSourceRect(pBmpFull, xBmp, yBmp, cxSrcImg, cySrcImg, &pBmp)))
+                    SPI<IWICBitmap> spBmp;
+                    if (SUCCEEDED(spFactory->CreateBitmapFromSourceRect(spBmpFull, xBmp, yBmp, cxSrcImg, cySrcImg, &spBmp)))
                     {
-                        HBITMAP hBmp = ScaleWicBitmapToBitmap(pFactory, pBmp, cxDstImg, cyDstImg);
+                        HBITMAP hBmp = ScaleWicBitmapToBitmap(spFactory, spBmp, cxDstImg, cyDstImg);
                         if (hBmp)
                         {
                             const HBITMAP hbmOldResize = SelectBitmap(hdcResize, hBmp);
@@ -641,7 +639,6 @@ bool HIDPI_StretchBitmap(HBITMAP* phbm, int cxDstImg, int cyDstImg, int cColumns
                             SelectBitmap(hdcResize, hbmOldResize);
                             DeleteBitmap(hBmp);
                         }
-                        ReleaseI(pBmp);
                     }
                 }
                 else
@@ -649,8 +646,8 @@ bool HIDPI_StretchBitmap(HBITMAP* phbm, int cxDstImg, int cyDstImg, int cColumns
                     StretchBlt(hdcDst, xDest, yDest, cxDstImg, cyDstImg, hdcSrc, xBmp, yBmp, cxSrcImg, cySrcImg, SRCCOPY);
                 }
 
-        ReleaseI(pBmpFull);
-        ReleaseI(pFactory);
+        //spBmpFull.Release();
+        //spFactory.Release();
 
         // Free the GDI objects we created.
         SelectBitmap(hdcSrc, hbmOldSrc);
