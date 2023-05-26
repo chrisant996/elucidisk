@@ -80,7 +80,7 @@ LONG ReadRegLong(const WCHAR* name, LONG default_value)
     {
         DWORD type;
         LONG value;
-        DWORD cb;
+        DWORD cb = sizeof(value);
         if (ERROR_SUCCESS == RegQueryValueEx(hkey, name, 0, &type, reinterpret_cast<BYTE*>(&value), &cb) &&
             type == REG_DWORD &&
             cb == sizeof(value))
