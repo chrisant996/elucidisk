@@ -9,6 +9,7 @@
 #include "ui.h"
 #include "sunburst.h"
 #include "res.h"
+#include "version.h"
 #include <windowsx.h>
 #include <iosfwd>
 
@@ -527,6 +528,7 @@ private:
     DpiScaler               m_dpi;
     LONG                    m_top_reserve = 0;
     LONG                    m_margin_reserve = 0;
+    RECT                    m_web_link_rect = {};
     SizeTracker             m_sizeTracker;
     LONG                    m_cxNumberArea = 0;
     bool                    m_inWmDpiChanged = false;
@@ -993,26 +995,62 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
                 DrawNodeInfo(ps.hdc, rcClient, m_hover_node, m_hover_free);
 
-#ifdef DEBUG
                 {
-                    static int s_counter = 0;
-                    s_counter++;
                     WCHAR sz[100];
                     SIZE size;
-
                     LONG yy = rcClient.bottom - m_margin_reserve;
+#ifdef DEBUG
+                    static int s_counter = 0;
+                    s_counter++;
 
                     swprintf_s(sz, _countof(sz), TEXT("%u nodes"), CountNodes());
                     GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
                     yy -= size.cy;
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
 
                     swprintf_s(sz, _countof(sz), TEXT("%u paints"), s_counter);
                     GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
                     yy -= size.cy;
-                }
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+#else
+                    TEXTMETRIC tm;
+                    GetTextMetrics(ps.hdc, &tm);
+
+                    swprintf_s(sz, _countof(sz), TEXT("Elucidisk github repo"));
+                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
+                    yy -= size.cy;
+                    COLORREF old_color = SetTextColor(ps.hdc, RGB(51, 51, 255));
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+                    RECT rcUnderline;
+                    rcUnderline.left = rcClient.right - (size.cx + m_margin_reserve);
+                    rcUnderline.top = yy;
+                    rcUnderline.right = rcClient.right - m_margin_reserve;
+                    rcUnderline.bottom = yy + size.cy;
+                    m_web_link_rect = rcUnderline;
+                    rcUnderline.top += tm.tmAscent + m_dpi.Scale(1);
+                    rcUnderline.bottom = rcUnderline.top + m_dpi.Scale(1);
+                    COLORREF old_bkcolor = SetBkColor(ps.hdc, RGB(51, 51, 255));
+                    ExtTextOut(ps.hdc, 0, 0, ETO_OPAQUE, &rcUnderline, nullptr, 0, nullptr);
+                    SetBkColor(ps.hdc, old_bkcolor);
+                    SetTextColor(ps.hdc, old_color);
+
+                    swprintf_s(sz, _countof(sz), TEXT("by Christopher Antos"));
+                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
+                    yy -= size.cy;
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+
+                    const WCHAR* text = TEXT(COPYRIGHT_STR);
+                    const WCHAR* end = wcschr(wcschr(wcschr(text, ' ') + 1, ' ') + 1, ' ');
+                    GetTextExtentPoint32(ps.hdc, sz, int(end - text), &size);
+                    yy -= size.cy;
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, text, int(end - text), 0);
+
+                    swprintf_s(sz, _countof(sz), TEXT("Version %u.%u"), VERSION_MAJOR, VERSION_MINOR);
+                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
+                    yy -= size.cy;
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
 #endif
+                }
 
                 SelectFont(ps.hdc, m_hfontCenter);
 
@@ -1052,6 +1090,19 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             EndPaint(m_hwnd, &ps);
         }
         break;
+
+    case WM_SETCURSOR:
+        {
+            UINT xy = GetMessagePos();
+            POINT pt = { GET_X_LPARAM(xy), GET_Y_LPARAM(xy) };
+            ScreenToClient(m_hwnd, &pt);
+            if (PtInRect(&m_web_link_rect, pt))
+            {
+                SetCursor(LoadCursor(0, IDC_HAND));
+                return true;
+            }
+        }
+        goto LDefault;
 
     case WM_MOUSEMOVE:
         {
@@ -1105,6 +1156,9 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 Expand(node);
 
             m_buttons.OnMouseMessage(msg, &pt);
+
+            if (PtInRect(&m_web_link_rect, pt))
+                ShellOpen(m_hwnd, TEXT("https://github.com/chrisant996/elucidisk"));
         }
         break;
 
