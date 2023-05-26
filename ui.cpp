@@ -292,10 +292,19 @@ void SizeTracker::WritePosition()
 
 class Buttons
 {
+    struct Button
+    {
+        UINT m_id = 0;
+        RECT m_rect = {};
+        std::wstring m_caption;
+        bool m_hidden = false;
+    };
+
 public:
     void                    Attach(HWND hwnd);
     void                    OnDpiChanged(const DpiScaler& dpi);
     void                    AddButton(UINT id, const RECT& rect, const WCHAR* caption = nullptr);
+    void                    ShowButton(UINT id, bool show);
     void                    RenderButtons(DirectHwndRenderTarget& target);
     void                    RenderCaptions(HDC hdc);
     void                    OnMouseMessage(UINT msg, const POINT* pt);
@@ -308,9 +317,7 @@ protected:
 
 private:
     HWND                    m_hwnd = 0;
-    std::vector<UINT>       m_ids;
-    std::vector<RECT>       m_rects;
-    std::vector<std::wstring> m_captions;
+    std::vector<Button>     m_buttons;
     int                     m_hover = -1;
     int                     m_pressed = -1;
     DpiScaler               m_dpi;
@@ -319,9 +326,7 @@ private:
 void Buttons::Attach(HWND hwnd)
 {
     OnCancelMode();
-    m_ids.clear();
-    m_rects.clear();
-    m_captions.clear();
+    m_buttons.clear();
     m_hwnd = hwnd;
 }
 
@@ -330,18 +335,40 @@ void Buttons::OnDpiChanged(const DpiScaler& dpi)
     m_dpi.OnDpiChanged(dpi);
 }
 
-void Buttons::AddButton(UINT id, const RECT& rect, const WCHAR* caption)
+void Buttons::AddButton(const UINT id, const RECT& rect, const WCHAR* caption)
 {
-    m_ids.emplace_back(id);
-    m_rects.emplace_back(rect);
-    m_captions.emplace_back(caption ? caption : TEXT(""));
+    Button button;
+    button.m_id = id;
+    button.m_rect = rect;
+    button.m_caption = caption ? caption : TEXT("");
+    m_buttons.emplace_back(std::move(button));
+}
+
+void Buttons::ShowButton(const UINT id, const bool show)
+{
+    bool changed = false;
+
+    for (auto& button : m_buttons)
+    {
+        if (id == button.m_id)
+        {
+            changed = (changed || button.m_hidden == show);
+            button.m_hidden = !show;
+        }
+    }
+
+    if (changed)
+        InvalidateRect(m_hwnd, nullptr, false);
 }
 
 void Buttons::RenderButtons(DirectHwndRenderTarget& target)
 {
-    for (size_t ii = 0; ii < m_ids.size(); ++ii)
+    for (size_t ii = 0; ii < m_buttons.size(); ++ii)
     {
-        const RECT& rect = m_rects[ii];
+        if (m_buttons[ii].m_hidden)
+            continue;
+
+        const RECT& rect = m_buttons[ii].m_rect;
         D2D1_RECT_F rectF;
         rectF.left = FLOAT(rect.left);
         rectF.top = FLOAT(rect.top);
@@ -364,10 +391,13 @@ void Buttons::RenderCaptions(HDC hdc)
 {
     SetBkMode(hdc, TRANSPARENT);
 
-    for (size_t ii = 0; ii < m_captions.size(); ++ii)
+    for (size_t ii = 0; ii < m_buttons.size(); ++ii)
     {
-        const RECT& rect = m_rects[ii];
-        const std::wstring& caption = m_captions[ii];
+        if (m_buttons[ii].m_hidden)
+            continue;
+
+        const RECT& rect = m_buttons[ii].m_rect;
+        const std::wstring& caption = m_buttons[ii].m_caption;
 
         SIZE size;
         GetTextExtentPoint32(hdc, caption.c_str(), int(caption.length()), &size);
@@ -391,8 +421,8 @@ void Buttons::OnMouseMessage(UINT msg, const POINT* pt)
         SetHover(hover, hover);
         break;
     case WM_LBUTTONUP:
-        if (m_hover >= 0 && m_hover < m_ids.size() && m_hover == m_pressed)
-            SendMessage(m_hwnd, WM_COMMAND, GET_WM_COMMAND_MPS(m_ids[m_hover], m_hwnd, 0));
+        if (m_hover >= 0 && m_hover < m_buttons.size() && m_hover == m_pressed)
+            SendMessage(m_hwnd, WM_COMMAND, GET_WM_COMMAND_MPS(m_buttons[m_hover].m_id, m_hwnd, 0));
         m_pressed = -1;
         InvalidateButton(m_hover);
         break;
@@ -408,9 +438,9 @@ int Buttons::HitTest(const POINT* pt) const
 {
     if (pt)
     {
-        for (size_t ii = 0; ii < m_ids.size(); ++ii)
+        for (size_t ii = 0; ii < m_buttons.size(); ++ii)
         {
-            if (PtInRect(&m_rects[ii], *pt))
+            if (PtInRect(&m_buttons[ii].m_rect, *pt))
                 return int(ii);
         }
     }
@@ -421,10 +451,10 @@ void Buttons::InvalidateButton(int index) const
 {
     assert(m_hwnd);
 
-    if (index >= 0 && index < m_rects.size())
+    if (index >= 0 && index < m_buttons.size())
     {
 // TODO: The D2D/GDI hybrid painting doesn't mix well with partial invalidation.
-        //InvalidateRect(m_hwnd, &m_rects[index], false);
+        //InvalidateRect(m_hwnd, &m_buttons[index].m_rect, false);
         InvalidateRect(m_hwnd, nullptr, false);
     }
 }
@@ -895,6 +925,9 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             POINT pt;
             GetCursorPos(&pt);
             ScreenToClient(m_hwnd, &pt);
+
+            m_buttons.ShowButton(IDM_UP, m_roots.size() == 1 && (m_roots[0]->GetParent() || m_original_roots.size() > 1));
+            m_buttons.ShowButton(IDM_BACK, m_back_current > 0);
 
             // D2D rendering.
 
