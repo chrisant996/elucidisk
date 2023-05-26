@@ -259,8 +259,8 @@ void SizeTracker::ReadPosition()
 
     cx = std::min<LONG>(cx, info.rcWork.right - info.rcWork.left);
     cy = std::min<LONG>(cy, info.rcWork.bottom - info.rcWork.top);
-    cx = std::max<LONG>(cx, m_dpi.Scale(320));
-    cy = std::max<LONG>(cy, m_dpi.Scale(320));
+    cx = std::max<LONG>(cx, m_dpi.Scale(480));
+    cy = std::max<LONG>(cy, m_dpi.Scale(360));
 
     const LONG xx = info.rcWork.left + ((info.rcWork.right - info.rcWork.left) - cx) / 2;
     const LONG yy = info.rcWork.top + ((info.rcWork.bottom - info.rcWork.top) - cy) / 2;
@@ -295,8 +295,9 @@ class Buttons
 public:
     void                    Attach(HWND hwnd);
     void                    OnDpiChanged(const DpiScaler& dpi);
-    void                    AddButton(UINT id, const RECT& rect);
+    void                    AddButton(UINT id, const RECT& rect, const WCHAR* caption = nullptr);
     void                    RenderButtons(DirectHwndRenderTarget& target);
+    void                    RenderCaptions(HDC hdc);
     void                    OnMouseMessage(UINT msg, const POINT* pt);
     void                    OnCancelMode();
 
@@ -309,6 +310,7 @@ private:
     HWND                    m_hwnd = 0;
     std::vector<UINT>       m_ids;
     std::vector<RECT>       m_rects;
+    std::vector<std::wstring> m_captions;
     int                     m_hover = -1;
     int                     m_pressed = -1;
     DpiScaler               m_dpi;
@@ -319,6 +321,7 @@ void Buttons::Attach(HWND hwnd)
     OnCancelMode();
     m_ids.clear();
     m_rects.clear();
+    m_captions.clear();
     m_hwnd = hwnd;
 }
 
@@ -327,10 +330,11 @@ void Buttons::OnDpiChanged(const DpiScaler& dpi)
     m_dpi.OnDpiChanged(dpi);
 }
 
-void Buttons::AddButton(UINT id, const RECT& rect)
+void Buttons::AddButton(UINT id, const RECT& rect, const WCHAR* caption)
 {
     m_ids.emplace_back(id);
     m_rects.emplace_back(rect);
+    m_captions.emplace_back(caption ? caption : TEXT(""));
 }
 
 void Buttons::RenderButtons(DirectHwndRenderTarget& target)
@@ -344,20 +348,33 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
         rectF.right = FLOAT(rect.right);
         rectF.bottom = FLOAT(rect.bottom);
 
-        if (m_hover == ii && m_pressed == ii)
-        {
-            target.FillBrush()->SetColor(D2D1::ColorF(D2D1::ColorF::LightSteelBlue));
-            target.Target()->FillRectangle(rectF, target.FillBrush());
-            target.FillBrush()->SetColor(D2D1::ColorF(D2D1::ColorF::Black));
-        }
-        else
-        {
-            target.FillBrush()->SetColor(D2D1::ColorF((m_hover == ii) ? D2D1::ColorF::Black : 0xD0D0D0));
-        }
+        const bool pressed = (m_hover == ii && m_pressed == ii);
+
+        target.FillBrush()->SetColor(D2D1::ColorF(pressed ? D2D1::ColorF::LightSteelBlue : D2D1::ColorF::White));
+        target.Target()->FillRectangle(rectF, target.FillBrush());
 
         const FLOAT stroke = FLOAT(m_dpi.Scale(1));
         inset_rect_for_stroke(rectF, stroke);
+        target.FillBrush()->SetColor(D2D1::ColorF((pressed || m_hover == ii) ? D2D1::ColorF::Black : 0xD0D0D0));
         target.Target()->DrawRectangle(rectF, target.FillBrush(), stroke);
+    }
+}
+
+void Buttons::RenderCaptions(HDC hdc)
+{
+    SetBkMode(hdc, TRANSPARENT);
+
+    for (size_t ii = 0; ii < m_captions.size(); ++ii)
+    {
+        const RECT& rect = m_rects[ii];
+        const std::wstring& caption = m_captions[ii];
+
+        SIZE size;
+        GetTextExtentPoint32(hdc, caption.c_str(), int(caption.length()), &size);
+
+        const LONG xx = rect.left + (rect.right - rect.left - size.cx) / 2;
+        const LONG yy = rect.top + (rect.bottom - rect.top - size.cy) / 2;
+        ExtTextOut(hdc, xx, yy, 0, &rect, caption.c_str(), int(caption.length()), nullptr);
     }
 }
 
@@ -465,7 +482,9 @@ protected:
     void                    Up();
     void                    Back();
     void                    Forward();
+    void                    Summary();
     void                    DeleteNode(const std::shared_ptr<Node>& node);
+    void                    EnumDrives();
     void                    Rescan();
 
     static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -477,11 +496,14 @@ private:
     HFONT                   m_hfontCenter = 0;
     DpiScaler               m_dpi;
     LONG                    m_top_reserve = 0;
+    LONG                    m_margin_reserve = 0;
     SizeTracker             m_sizeTracker;
     LONG                    m_cxNumberArea = 0;
     bool                    m_inWmDpiChanged = false;
 
     std::recursive_mutex    m_ui_mutex; // Synchronize m_scanner vs m_sunburst.
+
+    std::vector<std::wstring> m_drives;
 
     std::vector<std::shared_ptr<DirNode>> m_original_roots;
     std::vector<std::shared_ptr<DirNode>> m_roots;
@@ -536,6 +558,8 @@ HWND MainWindow::Create()
         RegisterClass(&wc);
         s_registered = true;
     }
+
+    EnumDrives();
 
     assert(!m_hwnd);
     const HWND hwnd = CreateWindowExW(0, c_class, c_caption, c_style, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, m_hinst, this);
@@ -641,8 +665,22 @@ void MainWindow::Forward()
     InvalidateRect(m_hwnd, nullptr, false);
 }
 
+void MainWindow::Summary()
+{
+    EnumDrives();
+
+    std::vector<const WCHAR*> args;
+    for (const auto& drive : m_drives)
+        args.emplace_back(drive.c_str());
+
+    if (!args.empty())
+        Scan(int(args.size()), args.data(), false);
+}
+
 void MainWindow::Rescan()
 {
+    EnumDrives();
+
 // TODO: Rescan current root(s) instead, clearing them first.  That gets
 // tricky if a scan is already in progress.  Maybe convert the recursive Scan
 // into a queue of DirNode's to be scanned, and insert the current roots at
@@ -659,6 +697,44 @@ void MainWindow::Rescan()
     const bool rescan = false;
 
     Scan(int(paths.size()), paths.data(), rescan);
+}
+
+void MainWindow::EnumDrives()
+{
+    m_drives.clear();
+
+    WCHAR buffer[1024];
+    const DWORD dw = GetLogicalDriveStrings(_countof(buffer), buffer);
+    if (dw > 0 && dw <= _countof(buffer))
+    {
+        for (WCHAR* p = buffer; *p; ++p)
+        {
+            WCHAR* drive = p;
+
+            while (*p)
+                ++p;
+
+            for (WCHAR* q = drive + wcslen(drive); q-- > drive;)
+            {
+                if (!is_separator(*q))
+                    break;
+                *q = 0;
+            }
+
+            m_drives.emplace_back(drive);
+        }
+    }
+
+    if (m_drives.empty())
+        m_drives.emplace_back(TEXT("."));
+
+    if (m_hwnd)
+    {
+        RECT rcClient;
+        GetClientRect(m_hwnd, &rcClient);
+        OnLayout(&rcClient);
+        InvalidateRect(m_hwnd, nullptr, false);
+    }
 }
 
 void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node, const bool is_free)
@@ -820,8 +896,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             GetCursorPos(&pt);
             ScreenToClient(m_hwnd, &pt);
 
-            const LONG margin_reserve = m_dpi.Scale(3);
-
             // D2D rendering.
 
             if (SUCCEEDED(m_directRender.CreateDeviceResources(m_hwnd, m_dpi)))
@@ -836,12 +910,12 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 // TODO: Don't paint sunburst if the area isn't invalidated.
                 const D2D1_SIZE_F rtSize = pTarget->GetSize();
-                const FLOAT width = rtSize.width - (margin_reserve + m_dpi.Scale(32) + margin_reserve) * 2;
-                const FLOAT height = rtSize.height - (margin_reserve + m_top_reserve);
+                const FLOAT width = rtSize.width - (m_margin_reserve + m_dpi.Scale(32) + m_margin_reserve) * 2;
+                const FLOAT height = rtSize.height - (m_margin_reserve + m_top_reserve);
 
                 const FLOAT extent = std::min<FLOAT>(width, height);
                 const FLOAT xx = (rtSize.width - extent) / 2;
-                const FLOAT yy = margin_reserve + m_top_reserve + (height - extent) / 2;
+                const FLOAT yy = m_margin_reserve + m_top_reserve + (height - extent) / 2;
                 const D2D1_RECT_F bounds = D2D1::RectF(xx, yy, xx + extent, yy + extent);
 
                 static size_t s_gen = 0;
@@ -892,13 +966,18 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     s_counter++;
                     WCHAR sz[100];
                     SIZE size;
-                    swprintf_s(sz, _countof(sz), TEXT("%u paints"), s_counter);
-                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    //ExtTextOut(ps.hdc, rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + margin_reserve), rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+
+                    LONG yy = rcClient.bottom - m_margin_reserve;
 
                     swprintf_s(sz, _countof(sz), TEXT("%u nodes"), CountNodes());
-                    ExtTextOut(ps.hdc, rcClient.left + margin_reserve, rcClient.bottom - margin_reserve - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+                    yy -= size.cy;
+
+                    swprintf_s(sz, _countof(sz), TEXT("%u paints"), s_counter);
+                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
+                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy - size.cy, 0, &rcClient, sz, int(wcslen(sz)), 0);
+                    yy -= size.cy;
                 }
 #endif
 
@@ -917,7 +996,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 SIZE size;
                 GetTextExtentPoint32(ps.hdc, text.c_str(), int(text.length()), &size);
 
-                rcClient.top += margin_reserve + m_top_reserve;
+                rcClient.top += m_margin_reserve + m_top_reserve;
                 LONG xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
                 LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
                 ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
@@ -932,6 +1011,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
                     ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
                 }
+
+                m_buttons.RenderCaptions(ps.hdc);
             }
 
             RestoreDC(ps.hdc, -1);
@@ -1104,8 +1185,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_GETMINMAXINFO:
         {
             MINMAXINFO* const p = reinterpret_cast<MINMAXINFO*>(lParam);
-            p->ptMinTrackSize.x = m_dpi.Scale(320);
-            p->ptMinTrackSize.y = m_dpi.Scale(320);
+            p->ptMinTrackSize.x = m_dpi.Scale(480);
+            p->ptMinTrackSize.y = m_dpi.Scale(360);
         }
         break;
 
@@ -1209,6 +1290,20 @@ void MainWindow::OnCommand(WORD id, HWND hwndCtrl, WORD code)
     case IDM_BACK:
         Back();
         break;
+    case IDM_SUMMARY:
+        Summary();
+        break;
+    default:
+        if (id >= IDM_DRIVE_FIRST && id <= IDM_DRIVE_LAST)
+        {
+            const size_t index = id - IDM_DRIVE_FIRST;
+            if (index < m_drives.size())
+            {
+                const WCHAR* drive = m_drives[index].c_str();
+                Scan(1, &drive, false);
+            }
+        }
+        break;
     }
 }
 
@@ -1233,6 +1328,7 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
         TEXTMETRIC tm;
         GetTextMetrics(hdc, &tm);
         m_top_reserve = tm.tmHeight; // Space for full path.
+        m_margin_reserve = dpi.Scale(3);
 
         LONG cxMax = 0;
         for (WCHAR ch = '0'; ch <= '9'; ++ch)
@@ -1264,14 +1360,6 @@ void MainWindow::OnLayout(RECT* prc)
 
     m_buttons.Attach(m_hwnd);
 
-#if 0
-    rc.left = prc->left + margin;
-    rc.bottom = prc->bottom - margin;
-    rc.right = rc.left + dim;
-    rc.top = rc.bottom - dim;
-    m_buttons.AddButton(/*bottom left*/, rc);
-#endif
-
     rc.right = prc->right - margin;
     rc.top = prc->top + margin;
     rc.left = rc.right - dim;
@@ -1283,6 +1371,24 @@ void MainWindow::OnLayout(RECT* prc)
 
     OffsetRect(&rc, 0, dim + margin);
     m_buttons.AddButton(IDM_BACK, rc);
+
+    rc.left = prc->left + margin;
+    rc.bottom = prc->bottom - margin;
+    rc.right = rc.left + (dim * 5 / 2);
+    rc.top = rc.bottom - dim;
+    m_buttons.AddButton(IDM_SUMMARY, rc, TEXT("Summary"));
+
+    rc.left = prc->left + margin;
+    rc.top = prc->top + m_top_reserve + m_margin_reserve + m_top_reserve + m_top_reserve + margin + margin;
+    rc.right = rc.left + dim;
+    rc.bottom = rc.top + dim;
+    for (UINT ii = 0; ii < m_drives.size(); ++ii)
+    {
+        if (rc.bottom > prc->bottom - margin - dim - margin)
+            break;
+        m_buttons.AddButton(IDM_DRIVE_FIRST + ii, rc, m_drives[ii].c_str());
+        OffsetRect(&rc, 0, dim + margin);
+    }
 }
 
 LRESULT MainWindow::OnDestroy()
