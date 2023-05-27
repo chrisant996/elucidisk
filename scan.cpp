@@ -87,7 +87,6 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
     DriveNode* drive = root->AsDrive();
     if (drive)
     {
-// TODO: Support free space on UNC shares and on \\?\X: drives.
         DWORD sectors_per_cluster;
         DWORD bytes_per_sector;
         DWORD free_clusters;

@@ -12,7 +12,7 @@ BEGIN
         MENUITEM "&Open in Explorer",       IDM_OPEN_DIRECTORY
         MENUITEM SEPARATOR
         MENUITEM "&Recycle",                IDM_RECYCLE_ENTRY
-        MENUITEM "&Delete",                 IDM_DELETE_ENTRY
+        //MENUITEM "&Delete",                 IDM_DELETE_ENTRY
         MENUITEM "&Empty Recycle Bin",      IDM_EMPTY_RECYCLEBIN
         MENUITEM SEPARATOR
         MENUITEM "&Hide",                   IDM_HIDE_DIRECTORY

@@ -59,6 +59,8 @@ bool is_root_finished(const std::shared_ptr<Node>& node)
 
 bool is_drive(const WCHAR* path)
 {
+    // FUTURE: Recognize UNC shares and on \\?\X: drives.  But that might not
+    // be sufficient to support FreeSpace and RecycleBin for those.
     return (path[0] && path[1] == ':' && is_separator(path[2]) && !path[3]);
 }
 

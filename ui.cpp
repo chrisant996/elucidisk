@@ -1498,9 +1498,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             if (!recycle)
                 DeleteMenu(hmenuSub, IDM_EMPTY_RECYCLEBIN, MF_BYCOMMAND);
 
-// TODO: Delete is NYI.
-            DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
-
             if (g_use_compressed_size)
                 CheckMenuItem(hmenuSub, IDM_OPTION_COMPRESSED, MF_BYCOMMAND|MF_CHECKED);
             if (g_show_free_space)
