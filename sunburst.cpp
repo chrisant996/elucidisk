@@ -715,6 +715,28 @@ static D2D1_POINT_2F MakePoint(const D2D1_POINT_2F& center, FLOAT radius, FLOAT 
     return point;
 }
 
+COLORREF FixLuminance(COLORREF cr)
+{
+    // Luminance in the blue/purple range of hue in the HSL color space is
+    // disproportionate to the rest of the hue range.  This attempts to
+    // compensate -- primarily so that text can have legible contrast.
+    const float lo = 180.0f;
+    const float hi = 300.0f;
+    const float gravity = c_maxLum * 0.6f;
+    HSLColorType hsl(cr);
+    if (hsl.h >= lo && hsl.h <= hi)
+    {
+        constexpr float pi = 3.14159f;
+        const float hue_cos = cos((hsl.h - lo) * 2 * pi / (hi - lo));
+        if (hsl.l < gravity)
+            hsl.l += ((1.0f - hue_cos) / 2) * (gravity - hsl.l) * 0.8f;
+        else
+            hsl.l += ((1.0f - hue_cos) / 2) * (gravity - hsl.l) * 0.6f;
+        return hsl.ToRGB();
+    }
+    return cr;
+}
+
 D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
 {
     if (arc.m_node->AsFreeSpace())
@@ -737,10 +759,10 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
 // TODO: Dark theme.
     HSLColorType hsl;
     hsl.h = angle * c_maxHue / 360;
-    hsl.s = highlight ? c_maxSat : (c_maxSat * 0.8f) - (FLOAT(depth) * (c_maxSat / 20));
-    hsl.l = highlight ? c_maxLum / 2 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 20));
+    hsl.s = highlight ? c_maxSat : (c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (c_maxSat / 25));
+    hsl.l = highlight ? c_maxLum*3/5 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 30));
 
-    const COLORREF rgb = hsl.ToRGB();
+    const COLORREF rgb = FixLuminance(hsl.ToRGB());
 
     D2D1_COLOR_F color;
     color.r = FLOAT(GetRValue(rgb)) / 255;

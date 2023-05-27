@@ -8,6 +8,10 @@
 
 //#define USE_FAKE_DATA
 
+#ifdef USE_FAKE_DATA
+#define MAKE_COLOR_WHEEL
+#endif
+
 static void skip_separators(const WCHAR*& path)
 {
     while (is_separator(*path))
@@ -79,39 +83,61 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
         root = std::make_shared<DirNode>(path.c_str());
     }
 
+#ifndef USE_FAKE_DATA
     DriveNode* drive = root->AsDrive();
     if (drive)
     {
 // TODO: Support free space on UNC shares and on \\?\X: drives.
-        if (g_show_free_space)
+        DWORD sectors_per_cluster;
+        DWORD bytes_per_sector;
+        DWORD free_clusters;
+        DWORD total_clusters;
+        if (GetDiskFreeSpace(root->GetName(), &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
         {
-            DWORD sectors_per_cluster;
-            DWORD bytes_per_sector;
-            DWORD free_clusters;
-            DWORD total_clusters;
-            if (GetDiskFreeSpace(root->GetName(), &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
-            {
-                const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
-                drive->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
-            }
+            const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
+            drive->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
         }
     }
+#endif
 
     return root;
 }
 
 #ifdef USE_FAKE_DATA
+#ifdef MAKE_COLOR_WHEEL
+void AddColorWheelDir(const std::shared_ptr<DirNode> parent, const WCHAR* name, int depth)
+{
+    depth--;
+
+    if (!depth)
+        parent->AddFile(TEXT("x"), 1000);
+    else
+        AddColorWheelDir(parent->AddDir(name), name, depth);
+
+    parent->Finish();
+}
+#endif
+
 static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool include_free_space)
 {
     static const ULONGLONG units = 1024;
 
     std::vector<std::shared_ptr<DirNode>> dirs;
 
+#ifdef MAKE_COLOR_WHEEL
+    for (int ii = 0; ii < 360; ii += 10)
+    {
+        WCHAR sz[100];
+        swprintf_s(sz, _countof(sz), TEXT("%u to %u"), ii, ii + 10);
+        AddColorWheelDir(root, sz, 10);
+    }
+#else
     if (include_free_space)
     {
+        DriveNode* drive = root->AsDrive();
         dirs.emplace_back(root->AddDir(TEXT("Abc")));
         dirs.emplace_back(root->AddDir(TEXT("Def")));
-        root->AddFreeSpace(1000 * units, 2000 * units);
+        drive->AddFreeSpace(1000 * units, 2000 * units);
     }
     else if (root->GetParent() && root->GetParent()->GetParent())
     {
@@ -133,6 +159,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
         FakeScan(dirs[ii], ii, false);
 
     root->Finish();
+#endif
 }
 #endif
 
