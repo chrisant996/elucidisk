@@ -30,6 +30,143 @@ void inset_rect_for_stroke(D2D1_RECT_F& rect, FLOAT stroke)
     }
 }
 
+void MakeUpIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out)
+{
+    SPI<ID2D1PathGeometry> spGeometry;
+    if (target.Factory() && SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
+    {
+        const LONG dim = std::min<LONG>(rc.right - rc.left, rc.bottom - rc.top) * 3 / 4;
+        const LONG cx = dim * 3 / 5;
+        const LONG cy = dim * 4 / 5;
+        const FLOAT thickness = FLOAT(std::max<LONG>(3, dim / 8));
+
+        const FLOAT left = FLOAT(rc.left + ((rc.right - rc.left) - cx) / 2);
+        const FLOAT top = FLOAT(rc.top + ((rc.bottom - rc.top) - cy) / 2);
+        D2D1_RECT_F rect = D2D1::RectF(left, top, left + cx, top + cy);
+
+        SPI<ID2D1GeometrySink> spSink;
+        if (SUCCEEDED(spGeometry->Open(&spSink)))
+        {
+            spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+            spSink->BeginFigure(D2D1::Point2F(rect.right, rect.bottom), D2D1_FIGURE_BEGIN_FILLED);
+
+            D2D1_POINT_2F points[] =
+            {
+                D2D1::Point2F(rect.left + thickness, rect.bottom),
+                D2D1::Point2F(rect.left + thickness, rect.top + thickness*2),
+                D2D1::Point2F(rect.left, rect.top + thickness*2),
+                D2D1::Point2F(rect.left + thickness*3/2, rect.top + (LONG(thickness) & 1)),
+                D2D1::Point2F(rect.left + thickness*3, rect.top + thickness*2),
+                D2D1::Point2F(rect.left + thickness*2, rect.top + thickness*2),
+                D2D1::Point2F(rect.left + thickness*2, rect.bottom - thickness),
+                D2D1::Point2F(rect.right, rect.bottom - thickness),
+            };
+            spSink->AddLines(points, _countof(points));
+
+            spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            spSink->Close();
+
+            *out = spGeometry.Transfer();
+        }
+    }
+}
+
+void MakeBackIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out)
+{
+    SPI<ID2D1PathGeometry> spGeometry;
+    if (target.Factory() && SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
+    {
+        const LONG dim = std::min<LONG>(rc.right - rc.left, rc.bottom - rc.top) * 3 / 4;
+        const LONG cx = dim * 4 / 5;
+        const FLOAT thickness = FLOAT(std::max<LONG>(3, dim / 8));
+        const LONG cy = LONG(thickness) * 3;
+
+        const FLOAT left = FLOAT(rc.left + ((rc.right - rc.left) - cx) / 2);
+        const FLOAT top = FLOAT(rc.top + ((rc.bottom - rc.top) - cy) / 2);
+        D2D1_RECT_F rect = D2D1::RectF(left, top, left + cx, top + cy);
+
+        SPI<ID2D1GeometrySink> spSink;
+        if (SUCCEEDED(spGeometry->Open(&spSink)))
+        {
+            spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+            spSink->BeginFigure(D2D1::Point2F(rect.right, rect.bottom - thickness), D2D1_FIGURE_BEGIN_FILLED);
+
+            D2D1_POINT_2F points[] =
+            {
+                D2D1::Point2F(rect.left + thickness*2, rect.bottom - thickness),
+                D2D1::Point2F(rect.left + thickness*2, rect.bottom),
+                D2D1::Point2F(rect.left + (LONG(thickness) & 1), rect.top + thickness*3/2),
+                D2D1::Point2F(rect.left + thickness*2, rect.top),
+                D2D1::Point2F(rect.left + thickness*2, rect.top + thickness),
+                D2D1::Point2F(rect.right, rect.top + thickness),
+            };
+            spSink->AddLines(points, _countof(points));
+
+            spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            spSink->Close();
+
+            *out = spGeometry.Transfer();
+        }
+    }
+}
+
+void MakeRefreshIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out)
+{
+    SPI<ID2D1PathGeometry> spGeometry;
+    if (target.Factory() && SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
+    {
+        const LONG dim = std::min<LONG>(rc.right - rc.left, rc.bottom - rc.top) * 3 / 4;
+        const LONG cx = dim & ~1;
+        const LONG cy = dim & ~1;
+        const FLOAT thickness = FLOAT(std::max<LONG>(3, dim / 8));
+
+        const FLOAT left = FLOAT(rc.left + ((rc.right - rc.left) - cx) / 2);
+        const FLOAT top = FLOAT(rc.top + ((rc.bottom - rc.top) - cy) / 2);
+        D2D1_RECT_F rect = D2D1::RectF(left, top, left + cx, top + cy);
+
+        SPI<ID2D1GeometrySink> spSink;
+        if (SUCCEEDED(spGeometry->Open(&spSink)))
+        {
+            const D2D1_POINT_2F center = D2D1::Point2F((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+
+            spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+            spSink->BeginFigure(D2D1::Point2F(center.x, rect.top + thickness), D2D1_FIGURE_BEGIN_FILLED);
+
+            const FLOAT outer_radius = (rect.right - rect.left) / 2 - thickness;
+
+            D2D1_ARC_SEGMENT outer;
+            outer.size = D2D1::SizeF(outer_radius, outer_radius);
+            outer.sweepDirection = D2D1_SWEEP_DIRECTION_CLOCKWISE;
+            outer.point = D2D1::Point2F(rect.left + thickness, center.y);
+            outer.rotationAngle = -90.0f;
+            outer.arcSize = D2D1_ARC_SIZE_LARGE;
+            spSink->AddArc(outer);
+
+            D2D1_POINT_2F points[] =
+            {
+                D2D1::Point2F(rect.left, center.y),
+                D2D1::Point2F(rect.left + thickness*3/2, center.y - thickness*2 + (LONG(thickness) & 1)),
+                D2D1::Point2F(rect.left + thickness*3, center.y),
+                D2D1::Point2F(rect.left + thickness*2, center.y),
+            };
+            spSink->AddLines(points, _countof(points));
+
+            D2D1_ARC_SEGMENT inner;
+            inner.size = D2D1::SizeF(outer_radius - thickness, outer_radius - thickness);
+            inner.sweepDirection = D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE;
+            inner.point = D2D1::Point2F(center.x, rect.top + thickness*2);
+            inner.rotationAngle = 270.0f;
+            inner.arcSize = D2D1_ARC_SIZE_LARGE;
+            spSink->AddArc(inner);
+
+            spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            spSink->Close();
+
+            *out = spGeometry.Transfer();
+        }
+    }
+}
+
 //----------------------------------------------------------------------------
 // ScannerThread.
 
@@ -293,18 +430,22 @@ void SizeTracker::WritePosition()
 
 class Buttons
 {
+    typedef void (MakeButtonIconFn)(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out);
+
     struct Button
     {
         UINT m_id = 0;
         RECT m_rect = {};
         std::wstring m_caption;
+        SPI<ID2D1Geometry> m_spGeometry;
+        MakeButtonIconFn* m_make_icon = nullptr;
         bool m_hidden = false;
     };
 
 public:
     void                    Attach(HWND hwnd);
     void                    OnDpiChanged(const DpiScaler& dpi);
-    void                    AddButton(UINT id, const RECT& rect, const WCHAR* caption = nullptr);
+    void                    AddButton(UINT id, const RECT& rect, const WCHAR* caption=nullptr, MakeButtonIconFn* make_icon=nullptr);
     void                    ShowButton(UINT id, bool show);
     void                    RenderButtons(DirectHwndRenderTarget& target);
     void                    RenderCaptions(HDC hdc);
@@ -336,12 +477,13 @@ void Buttons::OnDpiChanged(const DpiScaler& dpi)
     m_dpi.OnDpiChanged(dpi);
 }
 
-void Buttons::AddButton(const UINT id, const RECT& rect, const WCHAR* caption)
+void Buttons::AddButton(const UINT id, const RECT& rect, const WCHAR* caption, MakeButtonIconFn* make_icon)
 {
     Button button;
     button.m_id = id;
     button.m_rect = rect;
     button.m_caption = caption ? caption : TEXT("");
+    button.m_make_icon = make_icon;
     m_buttons.emplace_back(std::move(button));
 }
 
@@ -366,10 +508,11 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
 {
     for (size_t ii = 0; ii < m_buttons.size(); ++ii)
     {
-        if (m_buttons[ii].m_hidden)
+        auto& button = m_buttons[ii];
+        if (button.m_hidden)
             continue;
 
-        const RECT& rect = m_buttons[ii].m_rect;
+        const RECT& rect = button.m_rect;
         D2D1_RECT_F rectF;
         rectF.left = FLOAT(rect.left);
         rectF.top = FLOAT(rect.top);
@@ -385,6 +528,11 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
         inset_rect_for_stroke(rectF, stroke);
         target.FillBrush()->SetColor(D2D1::ColorF((pressed || m_hover == ii) ? D2D1::ColorF::Black : 0xD0D0D0));
         target.Target()->DrawRectangle(rectF, target.FillBrush(), stroke);
+
+        if (!button.m_spGeometry && button.m_make_icon)
+            (*button.m_make_icon)(target, button.m_rect, button.m_spGeometry.UnsafeAddress());
+        if (button.m_spGeometry)
+            target.Target()->FillGeometry(button.m_spGeometry, target.LineBrush());
     }
 }
 
@@ -1474,16 +1622,15 @@ void MainWindow::OnLayout(RECT* prc)
     rc.bottom = prc->bottom - m_margin_reserve * 6 - m_top_reserve * 4;
     rc.left = rc.right - dim;
     rc.top = rc.bottom - dim;
-// TODO: Icon.
-    m_buttons.AddButton(IDM_REFRESH, rc, TEXT("!"));
+    m_buttons.AddButton(IDM_REFRESH, rc, nullptr, MakeRefreshIcon);
 
     OffsetRect(&rc, 0, 0 - (dim + margin));
-// TODO: Icon.
-    m_buttons.AddButton(IDM_BACK, rc, TEXT("\u2190"));
+    m_buttons.AddButton(IDM_BACK, rc, nullptr, MakeBackIcon);
 
     OffsetRect(&rc, 0, 0 - (dim + margin));
-// TODO: Icon.
-    m_buttons.AddButton(IDM_UP, rc, TEXT("\u2191"));
+    m_buttons.AddButton(IDM_UP, rc, nullptr, MakeUpIcon);
+
+// TODO: Button to open Programs & Features control panel.
 
     rc.left = prc->left + margin;
     rc.bottom = prc->bottom - margin;
