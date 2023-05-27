@@ -23,6 +23,7 @@
 #define IDM_UP                  2202
 #define IDM_SUMMARY             2203
 #define IDM_FOLDER              2204
+#define IDM_APPWIZ              2205
 
 #define IDM_DRIVE_FIRST         2300
 #define IDM_DRIVE_LAST          2349

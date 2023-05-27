@@ -30,7 +30,7 @@ void inset_rect_for_stroke(D2D1_RECT_F& rect, FLOAT stroke)
     }
 }
 
-void MakeUpIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out)
+FLOAT MakeUpIcon(DirectHwndRenderTarget& target, RECT rc, const DpiScaler& dpi, ID2D1Geometry** out)
 {
     SPI<ID2D1PathGeometry> spGeometry;
     if (target.Factory() && SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
@@ -69,9 +69,11 @@ void MakeUpIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out)
             *out = spGeometry.Transfer();
         }
     }
+
+    return 0.0f; // FillGeometry.
 }
 
-void MakeBackIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out)
+FLOAT MakeBackIcon(DirectHwndRenderTarget& target, RECT rc, const DpiScaler& dpi, ID2D1Geometry** out)
 {
     SPI<ID2D1PathGeometry> spGeometry;
     if (target.Factory() && SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
@@ -108,9 +110,11 @@ void MakeBackIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out)
             *out = spGeometry.Transfer();
         }
     }
+
+    return 0.0f; // FillGeometry.
 }
 
-void MakeRefreshIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out)
+FLOAT MakeRefreshIcon(DirectHwndRenderTarget& target, RECT rc, const DpiScaler& dpi, ID2D1Geometry** out)
 {
     SPI<ID2D1PathGeometry> spGeometry;
     if (target.Factory() && SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
@@ -165,6 +169,90 @@ void MakeRefreshIcon(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** ou
             *out = spGeometry.Transfer();
         }
     }
+
+    return 0.0f; // FillGeometry.
+}
+
+FLOAT MakeAppsIcon(DirectHwndRenderTarget& target, RECT rc, const DpiScaler& dpi, ID2D1Geometry** out)
+{
+    FLOAT stroke = 0.0f;
+
+    SPI<ID2D1PathGeometry> spGeometry;
+    if (target.Factory() && SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
+    {
+        const LONG dim = std::min<LONG>(rc.right - rc.left, rc.bottom - rc.top) * 7 / 10;
+        const LONG margin = std::max<LONG>(2, dim / 10);
+        const LONG extent = dim - margin*2;
+        stroke = FLOAT(std::max<LONG>(2, extent / 10));
+        const FLOAT halfstroke = stroke/2;
+        const FLOAT leg = FLOAT(extent/2 - std::max<LONG>(1, LONG(halfstroke)));
+        const FLOAT effectiveleg = leg - halfstroke;
+
+        const FLOAT left = FLOAT(rc.left + ((rc.right - rc.left) - extent) / 2);
+        const FLOAT top = FLOAT(rc.top + ((rc.bottom - rc.top) - extent) / 2);
+        D2D1_RECT_F rect = D2D1::RectF(left, top, left + extent, top + extent);
+
+        SPI<ID2D1GeometrySink> spSink;
+        if (SUCCEEDED(spGeometry->Open(&spSink)))
+        {
+            spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+
+            {
+                spSink->BeginFigure(D2D1::Point2F(rect.right - halfstroke, rect.bottom - halfstroke), D2D1_FIGURE_BEGIN_FILLED);
+                D2D1_POINT_2F points[] =
+                {
+                    D2D1::Point2F(rect.right - effectiveleg, rect.bottom - halfstroke),
+                    D2D1::Point2F(rect.right - effectiveleg, rect.bottom - effectiveleg),
+                    D2D1::Point2F(rect.right - halfstroke, rect.bottom - effectiveleg),
+                };
+                spSink->AddLines(points, _countof(points));
+                spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            }
+
+            {
+                spSink->BeginFigure(D2D1::Point2F(rect.left + halfstroke, rect.bottom - halfstroke), D2D1_FIGURE_BEGIN_FILLED);
+                D2D1_POINT_2F points[] =
+                {
+                    D2D1::Point2F(rect.left + effectiveleg, rect.bottom - halfstroke),
+                    D2D1::Point2F(rect.left + effectiveleg, rect.bottom - effectiveleg),
+                    D2D1::Point2F(rect.left + halfstroke, rect.bottom - effectiveleg),
+                };
+                spSink->AddLines(points, _countof(points));
+                spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            }
+
+            {
+                spSink->BeginFigure(D2D1::Point2F(rect.left + halfstroke, rect.top + halfstroke), D2D1_FIGURE_BEGIN_FILLED);
+                D2D1_POINT_2F points[] =
+                {
+                    D2D1::Point2F(rect.left + effectiveleg, rect.top + halfstroke),
+                    D2D1::Point2F(rect.left + effectiveleg, rect.top + effectiveleg),
+                    D2D1::Point2F(rect.left + halfstroke, rect.top + effectiveleg),
+                };
+                spSink->AddLines(points, _countof(points));
+                spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            }
+
+            {
+                const FLOAT tiltedoffset = sqrtf((leg-stroke)*(leg-stroke)/2);
+                spSink->BeginFigure(D2D1::Point2F(rect.right - effectiveleg, rect.top + effectiveleg - tiltedoffset), D2D1_FIGURE_BEGIN_FILLED);
+                D2D1_POINT_2F points[] =
+                {
+                    D2D1::Point2F(rect.right - effectiveleg + tiltedoffset, rect.top + effectiveleg - tiltedoffset*2),
+                    D2D1::Point2F(rect.right - effectiveleg + tiltedoffset*2, rect.top + effectiveleg - tiltedoffset),
+                    D2D1::Point2F(rect.right - effectiveleg + tiltedoffset, rect.top + effectiveleg),
+                };
+                spSink->AddLines(points, _countof(points));
+                spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            }
+
+            spSink->Close();
+
+            *out = spGeometry.Transfer();
+        }
+    }
+
+    return stroke; // DrawGeometry when > 0.0f.
 }
 
 //----------------------------------------------------------------------------
@@ -430,7 +518,7 @@ void SizeTracker::WritePosition()
 
 class Buttons
 {
-    typedef void (MakeButtonIconFn)(DirectHwndRenderTarget& target, RECT rc, ID2D1Geometry** out);
+    typedef FLOAT (MakeButtonIconFn)(DirectHwndRenderTarget& target, RECT rc, const DpiScaler& dpi, ID2D1Geometry** out);
 
     struct Button
     {
@@ -438,6 +526,7 @@ class Buttons
         RECT m_rect = {};
         std::wstring m_caption;
         SPI<ID2D1Geometry> m_spGeometry;
+        FLOAT m_stroke = 0.0f;
         MakeButtonIconFn* m_make_icon = nullptr;
         bool m_hidden = false;
     };
@@ -530,9 +619,14 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
         target.Target()->DrawRectangle(rectF, target.FillBrush(), stroke);
 
         if (!button.m_spGeometry && button.m_make_icon)
-            (*button.m_make_icon)(target, button.m_rect, button.m_spGeometry.UnsafeAddress());
+            button.m_stroke = (*button.m_make_icon)(target, button.m_rect, m_dpi, button.m_spGeometry.UnsafeAddress());
         if (button.m_spGeometry)
-            target.Target()->FillGeometry(button.m_spGeometry, target.LineBrush());
+        {
+            if (button.m_stroke > 0.0f)
+                target.Target()->DrawGeometry(button.m_spGeometry, target.LineBrush(), button.m_stroke);
+            else
+                target.Target()->FillGeometry(button.m_spGeometry, target.LineBrush());
+        }
     }
 }
 
@@ -1601,6 +1695,9 @@ void MainWindow::OnCommand(WORD id, HWND hwndCtrl, WORD code)
     case IDM_SUMMARY:
         Summary();
         break;
+    case IDM_APPWIZ:
+        ShellOpen(m_hwnd, TEXT("appwiz.cpl"));
+        break;
     default:
         if (id >= IDM_DRIVE_FIRST && id <= IDM_DRIVE_LAST)
         {
@@ -1669,18 +1766,22 @@ void MainWindow::OnLayout(RECT* prc)
     m_buttons.Attach(m_hwnd);
 
     rc.right = prc->right - margin;
+    rc.top = prc->top + m_top_reserve + m_margin_reserve * 2;
+    rc.left = rc.right - dim;
+    rc.bottom = rc.top + dim;
+    m_buttons.AddButton(IDM_REFRESH, rc, nullptr, MakeRefreshIcon);
+
+    OffsetRect(&rc, 0, (dim + margin));
+    m_buttons.AddButton(IDM_BACK, rc, nullptr, MakeBackIcon);
+
+    OffsetRect(&rc, 0, (dim + margin));
+    m_buttons.AddButton(IDM_UP, rc, nullptr, MakeUpIcon);
+
+    rc.right = prc->right - margin;
     rc.bottom = prc->bottom - m_margin_reserve * 6 - m_top_reserve * 4;
     rc.left = rc.right - dim;
     rc.top = rc.bottom - dim;
-    m_buttons.AddButton(IDM_REFRESH, rc, nullptr, MakeRefreshIcon);
-
-    OffsetRect(&rc, 0, 0 - (dim + margin));
-    m_buttons.AddButton(IDM_BACK, rc, nullptr, MakeBackIcon);
-
-    OffsetRect(&rc, 0, 0 - (dim + margin));
-    m_buttons.AddButton(IDM_UP, rc, nullptr, MakeUpIcon);
-
-// TODO: Button to open Programs & Features control panel.
+    m_buttons.AddButton(IDM_APPWIZ, rc, nullptr, MakeAppsIcon);
 
     rc.left = prc->left + margin;
     rc.bottom = prc->bottom - margin;
