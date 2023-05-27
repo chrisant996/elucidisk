@@ -722,16 +722,17 @@ COLORREF FixLuminance(COLORREF cr)
     // compensate -- primarily so that text can have legible contrast.
     const float lo = 180.0f;
     const float hi = 300.0f;
-    const float gravity = c_maxLum * 0.6f;
+    const float gravity = c_maxLum * 0.65f;
     HSLColorType hsl(cr);
     if (hsl.h >= lo && hsl.h <= hi)
     {
         constexpr float pi = 3.14159f;
         const float hue_cos = cos((hsl.h - lo) * 2 * pi / (hi - lo));
+        const float transform = (1.0f - hue_cos) / 2;
         if (hsl.l < gravity)
-            hsl.l += ((1.0f - hue_cos) / 2) * (gravity - hsl.l) * 0.8f;
+            hsl.l += transform * (gravity - hsl.l) * 0.8f;
         else
-            hsl.l += ((1.0f - hue_cos) / 2) * (gravity - hsl.l) * 0.6f;
+            hsl.l += transform * (gravity - hsl.l) * 0.6f;
         return hsl.ToRGB();
     }
     return cr;
