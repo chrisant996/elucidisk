@@ -1391,6 +1391,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 CheckMenuItem(hmenuSub, IDM_OPTION_FREESPACE, MF_BYCOMMAND|MF_CHECKED);
             if (g_show_names)
                 CheckMenuItem(hmenuSub, IDM_OPTION_NAMES, MF_BYCOMMAND|MF_CHECKED);
+            if (g_rainbow)
+                CheckMenuItem(hmenuSub, IDM_OPTION_RAINBOW, MF_BYCOMMAND|MF_CHECKED);
 
             switch (TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
             {
@@ -1432,6 +1434,11 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             case IDM_OPTION_NAMES:
                 g_show_names = !g_show_names;
                 WriteRegLong(TEXT("ShowNames"), g_show_names);
+                InvalidateRect(m_hwnd, nullptr, false);
+                break;
+            case IDM_OPTION_RAINBOW:
+                g_rainbow = !g_rainbow;
+                WriteRegLong(TEXT("Rainbow"), g_rainbow);
                 InvalidateRect(m_hwnd, nullptr, false);
                 break;
             }

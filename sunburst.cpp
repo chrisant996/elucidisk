@@ -734,7 +734,9 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     if (!is_root_finished(arc.m_node))
         return D2D1::ColorF(highlight ? 0x3078F8 : 0xB8B8B8);
 
-#ifdef USE_RAINBOW
+    if (!g_rainbow)
+        return D2D1::ColorF(highlight ? 0x3078F8 : 0x6495ED);
+
     const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
 
 // TODO: Dark theme.
@@ -752,9 +754,6 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     color.a = 1.0f;
 
     return color;
-#else
-    return D2D1::ColorF(highlight ? 0x3078F8 : 0x6495ED);
-#endif
 }
 
 D2D1_COLOR_F Sunburst::MakeRootColor(bool highlight, bool free)

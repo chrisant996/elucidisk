@@ -9,14 +9,13 @@
 #include "dpi.h"
 #include <assert.h>
 
-#define USE_RAINBOW
-
 LONG ReadRegLong(const WCHAR* name, LONG default_value);
 void WriteRegLong(const WCHAR* name, LONG value);
 
 extern bool g_use_compressed_size;
 extern bool g_show_free_space;
 extern bool g_show_names;
+extern bool g_rainbow;
 
 //----------------------------------------------------------------------------
 // Smart pointer for AddRef/Release refcounting.
