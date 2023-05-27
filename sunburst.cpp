@@ -526,7 +526,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
                 used.emplace_back(double(free->GetTotalSize() - free->GetFreeSize()));
                 if (size == 0.0f || used.back() == 0.0f)
                     scale.emplace_back(0.0f);
-                else if (dir->Finished())
+                else if (dir->IsFinished())
                     scale.emplace_back(used.back() / size);
                 else
                     scale.emplace_back(used.back() / std::max<double>(used.back(), size));
@@ -540,12 +540,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             grand_total += totals.back();
         }
 
-        if (grand_total < ULONGLONG(10) * 1024 * 1024)
-            m_units = UnitScale::KB;
-        else if (grand_total < ULONGLONG(10) * 1024 * 1024 * 1024)
-            m_units = UnitScale::MB;
-        else
-            m_units = UnitScale::GB;
+        m_units = AutoUnitScale(ULONGLONG(grand_total));
 
         double sweep = 0;
         for (size_t ii = 0; ii < roots.size(); ++ii)
@@ -580,7 +575,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
     for (size_t ii = 0; ii < roots.size(); ++ii)
     {
         std::shared_ptr<DirNode> root = roots[ii];
-        std::vector<std::shared_ptr<DirNode>> dirs = root->CopyDirs();
+        std::vector<std::shared_ptr<DirNode>> dirs = root->CopyDirs(true/*include_recycle*/);
         std::vector<std::shared_ptr<FileNode>> files = root->CopyFiles();
         std::shared_ptr<FreeSpaceNode> free = root->GetFreeSpace();
 
@@ -645,7 +640,7 @@ std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_rin
     for (const auto _parent : parent_ring)
     {
         const DirNode* parent = _parent.m_node->AsDir();
-        if (parent && !parent->Hidden())
+        if (parent && !parent->IsHidden())
         {
             double sweep = 0;
 
@@ -728,7 +723,7 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     const bool file = !!arc.m_node->AsFile();
     if (file)
         depth = 0;
-    else if (arc.m_node->AsDir() && arc.m_node->AsDir()->Hidden())
+    else if (arc.m_node->AsDir() && arc.m_node->AsDir()->IsHidden())
         return D2D1::ColorF(0xB8B8B8);
 
     if (!is_root_finished(arc.m_node))
@@ -1124,66 +1119,9 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
     }
 }
 
-void Sunburst::FormatSize(const ULONGLONG _size, std::wstring& text, std::wstring& units, int places)
+void Sunburst::FormatSize(const ULONGLONG size, std::wstring& text, std::wstring& units, int places)
 {
-    WCHAR sz[100];
-    double size = double(_size);
-
-    switch (m_units)
-    {
-    case UnitScale::KB:
-        units = TEXT("KB");
-        size /= 1024;
-        break;
-    case UnitScale::MB:
-        units = TEXT("MB");
-        size /= 1024;
-        size /= 1024;
-        break;
-    default:
-        units = TEXT("GB");
-        size /= 1024;
-        size /= 1024;
-        size /= 1024;
-        break;
-    }
-
-    if (places < 0)
-    {
-        if (size >= 100.0f)
-            places = 0;
-        else if (size >= 10.0f)
-            places = 1;
-        else if (size >= 1.0f)
-            places = 2;
-        else
-            places = 3;
-    }
-
-    swprintf_s(sz, _countof(sz), TEXT("%.*f"), places, size);
-    text = sz;
-}
-
-void Sunburst::FormatCount(const ULONGLONG count, std::wstring& text)
-{
-    WCHAR sz[100];
-    swprintf_s(sz, _countof(sz), TEXT("%llu"), count);
-
-    WCHAR* commas = sz + _countof(sz);
-    *(--commas) = '\0';
-
-    size_t ii = wcslen(sz);
-    for (int count = 0; ii--; ++count)
-    {
-        if (count == 3)
-        {
-            count = 0;
-            *(--commas) = ',';
-        }
-        *(--commas) = sz[ii];
-    }
-
-    text = commas;
+    ::FormatSize(size, text, units, m_units, places);
 }
 
 std::shared_ptr<Node> Sunburst::HitTest(POINT pt, bool* is_free)

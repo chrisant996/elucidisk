@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include "dpi.h"
+#include <string>
 #include <assert.h>
 
 LONG ReadRegLong(const WCHAR* name, LONG default_value);
@@ -16,6 +17,13 @@ extern bool g_use_compressed_size;
 extern bool g_show_free_space;
 extern bool g_show_names;
 extern bool g_rainbow;
+
+void MakeMenuPretty(HMENU hmenu);
+
+enum class UnitScale { Auto, KB, MB, GB };
+UnitScale AutoUnitScale(ULONGLONG size);
+void FormatSize(ULONGLONG size, std::wstring& text, std::wstring& units, UnitScale scale=UnitScale::Auto, int places=-1);
+void FormatCount(ULONGLONG count, std::wstring& text);
 
 //----------------------------------------------------------------------------
 // Smart pointer for AddRef/Release refcounting.
@@ -47,7 +55,7 @@ public:
     // and "SPI<Foo> spFoo( spPtrToCopy )".  One should not AddRef, but
     // the other sometimes should and sometimes should not.  But both end
     // up using the constructor.  So for now we can't allow either form.
-    SPI( IFace *p )                 { m_p = p; if (m_p) m_p->AddRef(); }
+    SPI(IFace *p)                   { m_p = p; if (m_p) m_p->AddRef(); }
 #endif
     ~SPI()                          { if (m_p) RemoveConst(m_p)->Release(); }
     SPI(SPI<IFace,ICast>&& other)   { m_p = other.m_p; other.m_p = 0; }
@@ -80,7 +88,7 @@ private:
 
 struct IUnknown;
 
-template<class IFace, IID const& iid = __uuidof(IFace)>
+template<class IFace, IID const& iid=__uuidof(IFace)>
 class SPQI : public SPI<IFace>
 {
 public:

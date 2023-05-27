@@ -4,6 +4,7 @@
 #include "main.h"
 #include "data.h"
 #include "scan.h"
+#include <shellapi.h>
 
 //#define USE_FAKE_DATA
 
@@ -63,22 +64,35 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
         return nullptr;
 
     ensure_separator(path);
-    std::shared_ptr<DirNode> root = std::make_shared<DirNode>(path.c_str());
 
-// TODO: Support free space on UNC shares and on \\?\X: drives.
-    if (g_show_free_space)
+    std::shared_ptr<DirNode> root;
+    if (is_drive(path.c_str()))
     {
-        const WCHAR* p = path.c_str();
-        if (p[0] && p[1] == ':' && is_separator(p[2]) && !p[3])
+        WCHAR sz[MAX_PATH];
+        wcscpy_s(sz, _countof(sz), path.c_str());
+        _wcsupr_s(sz, _countof(sz)); // Returns nullptr, contrary to reference docs.
+        path = sz;
+        root = std::make_shared<DriveNode>(path.c_str());
+    }
+    else
+    {
+        root = std::make_shared<DirNode>(path.c_str());
+    }
+
+    DriveNode* drive = root->AsDrive();
+    if (drive)
+    {
+// TODO: Support free space on UNC shares and on \\?\X: drives.
+        if (g_show_free_space)
         {
             DWORD sectors_per_cluster;
             DWORD bytes_per_sector;
             DWORD free_clusters;
             DWORD total_clusters;
-            if (GetDiskFreeSpace(p, &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
+            if (GetDiskFreeSpace(root->GetName(), &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
             {
                 const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
-                root->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
+                drive->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
             }
         }
     }
@@ -214,6 +228,10 @@ LResetFeedbackInterval:
             break;
         Scan(dir, this_generation, current_generation, feedback);
     }
+
+    DriveNode* drive = root->AsDrive();
+    if (drive)
+        drive->AddRecycleBin();
 
     root->Finish();
 }

@@ -3,6 +3,7 @@
 
 #include "main.h"
 #include "data.h"
+#include <shellapi.h>
 
 void ensure_separator(std::wstring& path)
 {
@@ -26,10 +27,22 @@ static void build_full_path(std::wstring& path, const Node* node)
     }
     else
     {
-        build_full_path(path, node->GetParent().get());
-        path.append(node->GetName());
-        if (node->AsDir())
-            ensure_separator(path);
+        const DirNode* dir = node->AsDir();
+        if (dir && dir->IsRecycleBin())
+        {
+            path = dir->GetName();
+            path.append(TEXT(" on "));
+            path.append(dir->GetParent()->GetName());
+            while (is_separator(path.c_str()[path.length() - 1]))
+                path.resize(path.length() - 1);
+        }
+        else
+        {
+            build_full_path(path, node->GetParent().get());
+            path.append(node->GetName());
+            if (dir)
+                ensure_separator(path);
+        }
     }
 }
 
@@ -38,10 +51,15 @@ bool is_root_finished(const std::shared_ptr<Node>& node)
     DirNode* dir = node->AsDir();
     for (DirNode* parent = dir ? dir : node->GetParent().get(); parent; parent = parent->GetParent().get())
     {
-        if (!parent->Finished())
+        if (!parent->IsFinished())
             return false;
     }
     return true;
+}
+
+bool is_drive(const WCHAR* path)
+{
+    return (path[0] && path[1] == ':' && is_separator(path[2]) && !path[3]);
 }
 
 #ifdef DEBUG
@@ -68,7 +86,7 @@ Node::~Node()
 bool Node::IsParentFinished() const
 {
     std::shared_ptr<DirNode> parent = GetParent();
-    return parent && parent->Finished();
+    return parent && parent->IsFinished();
 }
 
 void Node::GetFullPath(std::wstring& out) const
@@ -76,11 +94,14 @@ void Node::GetFullPath(std::wstring& out) const
     build_full_path(out, this);
 }
 
-std::vector<std::shared_ptr<DirNode>> DirNode::CopyDirs() const
+std::vector<std::shared_ptr<DirNode>> DirNode::CopyDirs(bool include_recycle) const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    return m_dirs;
+    std::vector<std::shared_ptr<DirNode>> dirs = m_dirs;
+    if (include_recycle && GetRecycleBin())
+        dirs.emplace_back(GetRecycleBin());
+    return dirs;
 }
 
 std::vector<std::shared_ptr<FileNode>> DirNode::CopyFiles() const
@@ -138,20 +159,6 @@ std::shared_ptr<FileNode> DirNode::AddFile(const WCHAR* name, ULONGLONG size)
     return file;
 }
 
-void DirNode::AddFreeSpace(ULONGLONG free, ULONGLONG total)
-{
-    std::wstring name;
-    name.append(TEXT("Free on "));
-    name.append(GetName());
-
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-
-        std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
-        m_free = std::make_shared<FreeSpaceNode>(name.c_str(), free, total, parent);
-    }
-}
-
 void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -159,6 +166,12 @@ void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
     if (node->AsDir())
     {
         DirNode* dir = node->AsDir();
+        if (dir->IsRecycleBin())
+        {
+            assert(false);
+            return;
+        }
+
         for (auto iter = m_dirs.begin(); iter != m_dirs.end(); ++iter)
         {
             if (iter->get() == dir)
@@ -196,6 +209,52 @@ void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
                 return;
             }
         }
+    }
+}
+
+void DirNode::UpdateRecycleBinMetadata(ULONGLONG size)
+{
+    GetParent()->m_size -= m_size;
+    m_size = size;
+    GetParent()->m_size += m_size;
+}
+
+void RecycleBinNode::UpdateRecycleBin()
+{
+    const WCHAR* drive = GetParent()->GetName();
+    ULONGLONG size = 0;
+
+    SHQUERYRBINFO info = { sizeof(info) };
+    if (SUCCEEDED(SHQueryRecycleBin(drive, &info)))
+        size = info.i64Size;
+
+    UpdateRecycleBinMetadata(size);
+}
+
+void DriveNode::AddRecycleBin()
+{
+    const std::shared_ptr<DirNode> parent = std::static_pointer_cast<DirNode>(shared_from_this());
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        m_recycle = std::make_shared<RecycleBinNode>(parent);
+    }
+
+    m_recycle->UpdateRecycleBin();
+    m_recycle->Finish();
+}
+
+void DriveNode::AddFreeSpace(ULONGLONG free, ULONGLONG total)
+{
+    std::wstring name;
+    name.append(TEXT("Free on "));
+    name.append(GetName());
+
+    const std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        m_free = std::make_shared<FreeSpaceNode>(name.c_str(), free, total, parent);
     }
 }
 

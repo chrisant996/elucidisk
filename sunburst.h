@@ -67,8 +67,6 @@ class Sunburst
         std::shared_ptr<Node> m_node;
     };
 
-    enum class UnitScale { KB, MB, GB };
-
 public:
                             Sunburst();
                             ~Sunburst();
@@ -78,7 +76,6 @@ public:
     void                    BuildRings(const std::vector<std::shared_ptr<DirNode>>& roots);
     void                    RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight);
     void                    FormatSize(ULONGLONG size, std::wstring& text, std::wstring& units, int places=-1);
-    void                    FormatCount(ULONGLONG count, std::wstring& text);
     std::shared_ptr<Node>   HitTest(POINT pt, bool* is_free=nullptr);
 
 protected:

@@ -18,7 +18,9 @@
 
 class DirNode;
 class FileNode;
+class RecycleBinNode;
 class FreeSpaceNode;
+class DriveNode;
 
 #ifdef DEBUG
 LONG CountNodes();
@@ -37,9 +39,15 @@ public:
     virtual const DirNode*  AsDir() const { return nullptr; }
     virtual FileNode*       AsFile() { return nullptr; }
     virtual const FileNode* AsFile() const { return nullptr; }
+    virtual RecycleBinNode* AsRecycleBin() { return nullptr; }
+    virtual const RecycleBinNode* AsRecycleBin() const { return nullptr; }
     virtual const FreeSpaceNode* AsFreeSpace() const { return nullptr; }
+    virtual DriveNode*      AsDrive() { return nullptr; }
+    virtual const DriveNode* AsDrive() const { return nullptr; }
     void                    SetCompressed() { m_compressed = true; }
     bool                    IsCompressed() const { return m_compressed; }
+    virtual bool            IsRecycleBin() const { return false; }
+    virtual bool            IsDrive() const { return false; }
 protected:
     const std::weak_ptr<DirNode> m_parent;
     const std::wstring      m_name;
@@ -49,29 +57,30 @@ protected:
 class DirNode : public Node
 {
 public:
-                            DirNode(const WCHAR* name) : Node(name, std::shared_ptr<DirNode>(nullptr)) {}
+                            DirNode(const WCHAR* name) : Node(name, nullptr) {}
                             DirNode(const WCHAR* name, const std::shared_ptr<DirNode>& parent) : Node(name, parent) {}
     DirNode*                AsDir() override { return this; }
     const DirNode*          AsDir() const override { return this; }
-    ULONGLONG               CountDirs() const { return m_count_dirs; }
+    ULONGLONG               CountDirs(bool include_recycle=false) const { return m_count_dirs + (include_recycle && GetRecycleBin()); }
     ULONGLONG               CountFiles() const { return m_count_files; }
-    std::vector<std::shared_ptr<DirNode>> CopyDirs() const;
+    std::vector<std::shared_ptr<DirNode>> CopyDirs(bool include_recycle=false) const;
     std::vector<std::shared_ptr<FileNode>> CopyFiles() const;
-    std::shared_ptr<FreeSpaceNode> GetFreeSpace() const { return m_free; }
+    virtual std::shared_ptr<RecycleBinNode> GetRecycleBin() const { return nullptr; }
+    virtual std::shared_ptr<FreeSpaceNode> GetFreeSpace() const { return nullptr; }
     ULONGLONG               GetSize() const { return m_size; }
     void                    Hide(bool hide=true) { m_hide = hide; }
-    bool                    Hidden() const { return m_hide; }
+    bool                    IsHidden() const { return m_hide; }
     std::shared_ptr<DirNode> AddDir(const WCHAR* name);
     std::shared_ptr<FileNode> AddFile(const WCHAR* name, ULONGLONG size);
-    void                    AddFreeSpace(ULONGLONG free, ULONGLONG total);
     void                    DeleteChild(const std::shared_ptr<Node>& node);
     void                    Finish() { m_finished = true; }
-    bool                    Finished() const { return m_finished; }
-private:
+    bool                    IsFinished() const { return m_finished; }
+protected:
+    void                    UpdateRecycleBinMetadata(ULONGLONG size);
     mutable std::mutex      m_mutex;
+private:
     std::vector<std::shared_ptr<DirNode>> m_dirs;
     std::vector<std::shared_ptr<FileNode>> m_files;
-    std::shared_ptr<FreeSpaceNode> m_free; // TODO: Only needed on a RootDirNode.
     ULONGLONG               m_count_dirs = 0;
     ULONGLONG               m_count_files = 0;
     ULONGLONG               m_size = 0;
@@ -90,6 +99,15 @@ private:
     const ULONGLONG         m_size;
 };
 
+class RecycleBinNode : public DirNode
+{
+public:
+                            RecycleBinNode(const std::shared_ptr<DirNode>& parent) : DirNode(TEXT("Recycle Bin"), parent) {}
+    virtual RecycleBinNode* AsRecycleBin() { return this; }
+    void                    UpdateRecycleBin();
+    bool                    IsRecycleBin() const override { return true; }
+};
+
 class FreeSpaceNode : public Node
 {
 public:
@@ -102,8 +120,25 @@ private:
     const ULONGLONG         m_total;
 };
 
+class DriveNode : public DirNode
+{
+public:
+                            DriveNode(const WCHAR* name) : DirNode(name, nullptr) {}
+    virtual DriveNode*      AsDrive() { return this; }
+    virtual const DriveNode* AsDrive() const { return this; }
+    void                    AddRecycleBin();
+    void                    AddFreeSpace(ULONGLONG free, ULONGLONG total);
+    virtual std::shared_ptr<RecycleBinNode> GetRecycleBin() const override { return m_recycle; }
+    virtual std::shared_ptr<FreeSpaceNode> GetFreeSpace() const override { return m_free; }
+    bool                    IsDrive() const override { return true; }
+private:
+    std::shared_ptr<RecycleBinNode> m_recycle;
+    std::shared_ptr<FreeSpaceNode> m_free;
+};
+
 inline bool is_separator(const WCHAR ch) { return ch == '/' || ch == '\\'; }
 void ensure_separator(std::wstring& path);
 
 bool is_root_finished(const std::shared_ptr<Node>& node);
+bool is_drive(const WCHAR* path);
 

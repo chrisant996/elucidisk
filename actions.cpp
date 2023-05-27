@@ -2,6 +2,7 @@
 // License: http://opensource.org/licenses/MIT
 
 #include "main.h"
+#include "data.h"
 #include "actions.h"
 #include <shellapi.h>
 #include <stdio.h>
@@ -10,6 +11,11 @@
 void ShellOpen(HWND hwnd, const WCHAR* path)
 {
     ShellExecute(hwnd, nullptr, path, nullptr, nullptr, SW_NORMAL);
+}
+
+void ShellOpenRecycleBin(HWND hwnd)
+{
+    ShellExecute(hwnd, nullptr, TEXT("shell:RecycleBinFolder"), nullptr, nullptr, SW_NORMAL);
 }
 
 bool ShellRecycle(HWND hwnd, const WCHAR* _path)
@@ -45,6 +51,17 @@ bool ShellRecycle(HWND hwnd, const WCHAR* _path)
 bool ShellDelete(HWND hwnd, const WCHAR* path)
 {
 // TODO: Permanently delete.
+    return false;
+}
+
+bool ShellEmptyRecycleBin(HWND hwnd, const WCHAR* path)
+{
+    if (is_drive(path))
+    {
+        if (SUCCEEDED(SHEmptyRecycleBin(hwnd, path, 0)))
+            return true;
+    }
+
     return false;
 }
 

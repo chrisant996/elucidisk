@@ -35,6 +35,8 @@ int PASCAL WinMain(
 
     // Options (there are no options yet).
 
+// TODO: An option to generate the .ico file programmatically using D2D.
+
     // Create UI.
 
     CoInitialize(0);
@@ -104,5 +106,121 @@ void WriteRegLong(const WCHAR* name, LONG value)
         RegSetValueEx(hkey, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
         RegCloseKey(hkey);
     }
+}
+
+void MakeMenuPretty(HMENU hmenu)
+{
+    MENUITEMINFO mii = {};
+    mii.cbSize = sizeof(mii);
+#ifdef MIIM_FTYPE
+    mii.fMask = MIIM_FTYPE|MIIM_SUBMENU;
+#else
+    mii.fMask = MIIM_TYPE|MIIM_SUBMENU;
+#endif
+
+    bool fPrevSep = true;
+    for (int ii = 0; true; ii++)
+    {
+        const bool fEnd = !GetMenuItemInfo(hmenu, ii, true, &mii);
+
+        if (fEnd || (mii.fType & MFT_SEPARATOR))
+        {
+            if (fPrevSep)
+            {
+                DeleteMenu(hmenu, ii - fEnd, MF_BYPOSITION);
+                ii--;
+            }
+
+            if (fEnd)
+                break;
+
+            fPrevSep = true;
+        }
+        else
+        {
+            fPrevSep = false;
+        }
+
+        if (mii.hSubMenu)
+            MakeMenuPretty(mii.hSubMenu);
+    }
+}
+
+UnitScale AutoUnitScale(ULONGLONG size)
+{
+    size /= ULONGLONG(10) * 1024 * 1024;
+    if (!size)
+        return UnitScale::KB;
+
+    size /= 1024;
+    if (!size)
+        return UnitScale::MB;
+
+    return UnitScale::GB;
+}
+
+void FormatSize(const ULONGLONG _size, std::wstring& text, std::wstring& units, UnitScale scale, int places)
+{
+    WCHAR sz[100];
+    double size = double(_size);
+
+    if (scale == UnitScale::Auto)
+        scale = AutoUnitScale(_size);
+
+    switch (scale)
+    {
+    case UnitScale::KB:
+        units = TEXT("KB");
+        size /= 1024;
+        break;
+    case UnitScale::MB:
+        units = TEXT("MB");
+        size /= 1024;
+        size /= 1024;
+        break;
+    default:
+        units = TEXT("GB");
+        size /= 1024;
+        size /= 1024;
+        size /= 1024;
+        break;
+    }
+
+    if (places < 0)
+    {
+        if (size >= 100.0f)
+            places = 0;
+        else if (size >= 10.0f)
+            places = 1;
+        else if (size >= 1.0f)
+            places = 2;
+        else
+            places = 3;
+    }
+
+    swprintf_s(sz, _countof(sz), TEXT("%.*f"), places, size);
+    text = sz;
+}
+
+void FormatCount(const ULONGLONG count, std::wstring& text)
+{
+    WCHAR sz[100];
+    swprintf_s(sz, _countof(sz), TEXT("%llu"), count);
+
+    WCHAR* commas = sz + _countof(sz);
+    *(--commas) = '\0';
+
+    size_t ii = wcslen(sz);
+    for (int count = 0; ii--; ++count)
+    {
+        if (count == 3)
+        {
+            count = 0;
+            *(--commas) = ',';
+        }
+        *(--commas) = sz[ii];
+    }
+
+    text = commas;
 }
 

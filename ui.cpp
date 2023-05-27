@@ -602,7 +602,7 @@ void Buttons::InvalidateButton(int index) const
 
     if (index >= 0 && index < m_buttons.size())
     {
-// TODO: The D2D/GDI hybrid painting doesn't mix well with partial invalidation.
+        // Hybrid D2D+GDI painting doesn't mix well with partial invalidation.
         //InvalidateRect(m_hwnd, &m_buttons[index].m_rect, false);
         InvalidateRect(m_hwnd, nullptr, false);
     }
@@ -663,6 +663,7 @@ protected:
     void                    Forward();
     void                    Summary();
     void                    DeleteNode(const std::shared_ptr<Node>& node);
+    void                    UpdateRecycleBin(const std::shared_ptr<RecycleBinNode>& recycle);
     void                    EnumDrives();
     void                    Rescan();
 
@@ -770,7 +771,7 @@ void MainWindow::Scan(int argc, const WCHAR** argv, bool rescan)
 
 void MainWindow::Expand(const std::shared_ptr<Node>& node)
 {
-    if (!node || node->AsFile())
+    if (!node || node->AsFile() || node->AsRecycleBin() || node->AsFreeSpace() || !is_root_finished(node))
         return;
 
     std::shared_ptr<DirNode> back;
@@ -1012,15 +1013,15 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
                 SetTextColor(hdc, oldColor);
         }
 
-        if (node->AsDir() && !show_free)
+        if (node->AsDir() && !show_free && !node->AsDir()->IsRecycleBin())
         {
-            m_sunburst.FormatCount(node->AsDir()->CountFiles(), text);
+            FormatCount(node->AsDir()->CountFiles(), text);
             GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
             text.append(TEXT(" Files"));
             OffsetRect(&rcLine, 0, tm.tmHeight);
             ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
 
-            m_sunburst.FormatCount(node->AsDir()->CountDirs(), text);
+            FormatCount(node->AsDir()->CountDirs(true/*include_recycle*/), text);
             GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
             text.append(TEXT(" Dirs"));
             OffsetRect(&rcLine, 0, tm.tmHeight);
@@ -1091,7 +1092,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 pTarget->SetTransform(D2D1::Matrix3x2F::Identity());
                 pTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
 
-// TODO: Don't paint sunburst if the area isn't invalidated.
                 const D2D1_SIZE_F rtSize = pTarget->GetSize();
                 const FLOAT width = rtSize.width - (m_margin_reserve + m_dpi.Scale(32) + m_margin_reserve) * 2;
                 const FLOAT height = rtSize.height - (m_margin_reserve + m_top_reserve);
@@ -1111,7 +1111,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     sunburst.OnDpiChanged(m_dpi);
                     sunburst.SetBounds(bounds);
 
-// TODO: Only rebuild rings when something has changed.
+                    // FUTURE: Only rebuild rings when something has changed?
                     sunburst.BuildRings(m_roots);
                     m_hover_node = sunburst.HitTest(pt, &m_hover_free);
                     sunburst.RenderRings(m_directRender, m_hover_node);
@@ -1316,8 +1316,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             pt.y = GET_Y_LPARAM(lParam);
 
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
-            if (node && is_root_finished(node))
-                Expand(node);
+            Expand(node);
 
             m_buttons.OnMouseMessage(msg, &pt);
 
@@ -1342,28 +1341,20 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             pt.x = GET_X_LPARAM(lParam);
             pt.y = GET_Y_LPARAM(lParam);
 
-            int nPos = 0;
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
-            DirNode* dir = node ? node->AsDir() : nullptr;
-            FileNode* file = node ? node->AsFile() : nullptr;
+            DirNode* const dir = node ? node->AsDir() : nullptr;
+            FileNode* const file = node ? node->AsFile() : nullptr;
+            DirNode* const parent = (node && node->GetParent() ? node->GetParent()->AsDir() : nullptr);
+            RecycleBinNode* const recycle = (dir && dir->AsRecycleBin() ? dir->AsRecycleBin() :
+                                             dir && dir->GetRecycleBin() ? dir->GetRecycleBin()->AsRecycleBin() :
+                                             nullptr);
             std::wstring path;
-
-            if (!node)
-            {
-                nPos = 3;
-            }
-            else if (is_root_finished(node))
-            {
-                if (file)
-                    nPos = 1;
-                else if (dir)
-                    nPos = dir->GetFreeSpace() ? 0 : 2;
-                else
-                    break;
-            }
 
             if (node)
             {
+                if (is_root_finished(node) && !file && !dir)
+                    break;
+
                 node->GetFullPath(path);
                 if (path.empty())
                     break;
@@ -1372,16 +1363,29 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             POINT ptScreen = pt;
             ClientToScreen(m_hwnd, &ptScreen);
 
+            const int nPos = node ? 0 : 1;
             HMENU hmenu = LoadMenu(m_hinst, MAKEINTRESOURCE(IDR_CONTEXT_MENU));
             HMENU hmenuSub = GetSubMenu(hmenu, nPos);
 
             if (file)
                 DeleteMenu(hmenuSub, IDM_OPEN_DIRECTORY, MF_BYCOMMAND);
+            if (file || !parent)
+            {
+                DeleteMenu(hmenuSub, IDM_HIDE_DIRECTORY, MF_BYCOMMAND);
+                DeleteMenu(hmenuSub, IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
+            }
             if (dir)
             {
+                if (!is_root_finished(node) || dir->IsRecycleBin() || !parent)
+                {
+                    DeleteMenu(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND);
+                    DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
+                }
                 DeleteMenu(hmenuSub, IDM_OPEN_FILE, MF_BYCOMMAND);
-                DeleteMenu(hmenuSub, dir->Hidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
+                DeleteMenu(hmenuSub, dir->IsHidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
             }
+            if (!recycle)
+                DeleteMenu(hmenuSub, IDM_EMPTY_RECYCLEBIN, MF_BYCOMMAND);
 
 // TODO: Delete is NYI.
             DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
@@ -1395,12 +1399,42 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             if (g_rainbow)
                 CheckMenuItem(hmenuSub, IDM_OPTION_RAINBOW, MF_BYCOMMAND|MF_CHECKED);
 
+            MakeMenuPretty(hmenuSub);
+
+            if (recycle)
+            {
+                WCHAR sz[100];
+                MENUITEMINFO mii = { sizeof(mii) };
+                mii.fMask = MIIM_STRING;
+                mii.dwTypeData = sz;
+                mii.cch = _countof(sz);
+                if (GetMenuItemInfo(hmenuSub, IDM_EMPTY_RECYCLEBIN, false, &mii))
+                {
+                    WCHAR sz2[100];
+                    std::wstring size;
+                    std::wstring units;
+                    FormatSize(recycle->GetSize(), size, units);
+                    swprintf_s(sz2, _countof(sz2), TEXT("%s (%s %s)"), sz, size.c_str(), units.c_str());
+
+                    mii.fMask = MIIM_FTYPE|MIIM_STRING;
+                    mii.dwTypeData = sz2;
+                    mii.cch = UINT(wcslen(sz2));
+                    mii.fType = MFT_STRING;
+                    SetMenuItemInfo(hmenuSub, IDM_EMPTY_RECYCLEBIN, false, &mii);
+                }
+            }
+
             switch (TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
             {
             case IDM_OPEN_DIRECTORY:
             case IDM_OPEN_FILE:
                 if (node)
-                    ShellOpen(m_hwnd, path.c_str());
+                {
+                    if (dir && dir->IsRecycleBin())
+                        ShellOpenRecycleBin(m_hwnd);
+                    else
+                        ShellOpen(m_hwnd, path.c_str());
+                }
                 break;
 
             case IDM_RECYCLE_ENTRY:
@@ -1411,12 +1445,20 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 if (node && ShellDelete(m_hwnd, path.c_str()))
                     DeleteNode(node);
                 break;
+            case IDM_EMPTY_RECYCLEBIN:
+                if (recycle)
+                {
+                    path = recycle->GetParent()->GetName();
+                    if (ShellEmptyRecycleBin(m_hwnd, path.c_str()))
+                        recycle->UpdateRecycleBin();
+                }
+                break;
 
             case IDM_HIDE_DIRECTORY:
             case IDM_SHOW_DIRECTORY:
                 if (dir)
                 {
-                    dir->Hide(!dir->Hidden());
+                    dir->Hide(!dir->IsHidden());
                     InvalidateRect(m_hwnd, nullptr, false);
                 }
                 break;
@@ -1704,6 +1746,24 @@ void MainWindow::DeleteNode(const std::shared_ptr<Node>& node)
     {
         std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
         parent->AsDir()->DeleteChild(node);
+    }
+
+    InvalidateRect(m_hwnd, nullptr, false);
+}
+
+void MainWindow::UpdateRecycleBin(const std::shared_ptr<RecycleBinNode>& recycle)
+{
+    assert(recycle);
+    if (!recycle)
+        return;
+
+    assert(recycle->IsRecycleBin());
+    if (!recycle->IsRecycleBin())
+        return;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
+        recycle->UpdateRecycleBin();
     }
 
     InvalidateRect(m_hwnd, nullptr, false);

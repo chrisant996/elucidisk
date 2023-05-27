@@ -4,6 +4,8 @@
 #pragma once
 
 void ShellOpen(HWND hwnd, const WCHAR* path);
+void ShellOpenRecycleBin(HWND hwnd);
 bool ShellRecycle(HWND hwnd, const WCHAR* path);
 bool ShellDelete(HWND hwnd, const WCHAR* path);
+bool ShellEmptyRecycleBin(HWND hwnd, const WCHAR* path);
 
