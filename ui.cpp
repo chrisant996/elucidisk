@@ -525,6 +525,7 @@ class Buttons
         UINT m_id = 0;
         RECT m_rect = {};
         std::wstring m_caption;
+        std::wstring m_desc;
         SPI<ID2D1Geometry> m_spGeometry;
         FLOAT m_stroke = 0.0f;
         MakeButtonIconFn* m_make_icon = nullptr;
@@ -534,10 +535,11 @@ class Buttons
 public:
     void                    Attach(HWND hwnd);
     void                    OnDpiChanged(const DpiScaler& dpi);
-    void                    AddButton(UINT id, const RECT& rect, const WCHAR* caption=nullptr, MakeButtonIconFn* make_icon=nullptr);
+    void                    AddButton(UINT id, const RECT& rect, const WCHAR* caption=nullptr, const WCHAR* desc=nullptr, MakeButtonIconFn* make_icon=nullptr);
     void                    ShowButton(UINT id, bool show);
     void                    RenderButtons(DirectHwndRenderTarget& target);
     void                    RenderCaptions(HDC hdc);
+    const WCHAR*            GetHoverDescription();
     void                    OnMouseMessage(UINT msg, const POINT* pt);
     void                    OnCancelMode();
 
@@ -566,12 +568,18 @@ void Buttons::OnDpiChanged(const DpiScaler& dpi)
     m_dpi.OnDpiChanged(dpi);
 }
 
-void Buttons::AddButton(const UINT id, const RECT& rect, const WCHAR* caption, MakeButtonIconFn* make_icon)
+void Buttons::AddButton(const UINT id, const RECT& rect, const WCHAR* caption, const WCHAR* desc, MakeButtonIconFn* make_icon)
 {
     Button button;
     button.m_id = id;
     button.m_rect = rect;
-    button.m_caption = caption ? caption : TEXT("");
+    if (caption)
+        button.m_caption = caption;
+    if (desc)
+    {
+        button.m_desc = TEXT("\u2192 ");
+        button.m_desc.append(desc);
+    }
     button.m_make_icon = make_icon;
     m_buttons.emplace_back(std::move(button));
 }
@@ -649,6 +657,11 @@ void Buttons::RenderCaptions(HDC hdc)
         const LONG yy = rect.top + (rect.bottom - rect.top - size.cy) / 2;
         ExtTextOut(hdc, xx, yy, 0, &rect, caption.c_str(), int(caption.length()), nullptr);
     }
+}
+
+const WCHAR* Buttons::GetHoverDescription()
+{
+    return (m_hover >= 0 && m_hover < m_buttons.size()) ? m_buttons[m_hover].m_desc.c_str() : nullptr;
 }
 
 void Buttons::OnMouseMessage(UINT msg, const POINT* pt)
@@ -1030,7 +1043,12 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
     InflateRect(&rcLine, -padding, 0);
     rcLine.bottom = rcLine.top + tm.tmHeight;
 
-    if (node)
+    const WCHAR* desc = m_buttons.GetHoverDescription();
+    if (desc)
+    {
+        text = desc;
+    }
+    else if (node)
     {
         std::wstring path;
         node->GetFullPath(path);
@@ -1047,7 +1065,6 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
         {
             std::wstring path;
             text.clear();
-            text.append(TEXT("Scan of "));
             for (size_t ii = 0; ii < m_roots.size(); ++ii)
             {
                 if (ii)
@@ -1068,9 +1085,9 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
             text.append(path);
         }
     }
-    DrawText(hdc, text.c_str(), int(text.length()), &rcLine, DT_LEFT|DT_NOCLIP|DT_NOPREFIX|DT_PATH_ELLIPSIS|DT_SINGLELINE|DT_TOP);
+    DrawText(hdc, text.c_str(), int(text.length()), &rcLine, DT_LEFT|DT_NOPREFIX|DT_PATH_ELLIPSIS|DT_SINGLELINE|DT_TOP);
 
-    if (node)
+    if (!desc && node)
     {
         OffsetRect(&rcLine, 0, tm.tmHeight + padding);
         rcLine.right = rcLine.left + m_dpi.Scale(100);
@@ -1769,25 +1786,26 @@ void MainWindow::OnLayout(RECT* prc)
     rc.top = prc->top + m_top_reserve + m_margin_reserve * 2;
     rc.left = rc.right - dim;
     rc.bottom = rc.top + dim;
-    m_buttons.AddButton(IDM_REFRESH, rc, nullptr, MakeRefreshIcon);
+    const WCHAR* rescan_desc = (m_roots.size() > 1) ? TEXT("Rescan Folders") : TEXT("Rescan Folder");
+    m_buttons.AddButton(IDM_REFRESH, rc, nullptr, rescan_desc, MakeRefreshIcon);
 
     OffsetRect(&rc, 0, (dim + margin));
-    m_buttons.AddButton(IDM_BACK, rc, nullptr, MakeBackIcon);
+    m_buttons.AddButton(IDM_BACK, rc, nullptr, TEXT("Back"), MakeBackIcon);
 
     OffsetRect(&rc, 0, (dim + margin));
-    m_buttons.AddButton(IDM_UP, rc, nullptr, MakeUpIcon);
+    m_buttons.AddButton(IDM_UP, rc, nullptr, TEXT("Parent Folder"), MakeUpIcon);
 
     rc.right = prc->right - margin;
     rc.bottom = prc->bottom - m_margin_reserve * 6 - m_top_reserve * 4;
     rc.left = rc.right - dim;
     rc.top = rc.bottom - dim;
-    m_buttons.AddButton(IDM_APPWIZ, rc, nullptr, MakeAppsIcon);
+    m_buttons.AddButton(IDM_APPWIZ, rc, nullptr, TEXT("Programs and Features"), MakeAppsIcon);
 
     rc.left = prc->left + margin;
     rc.bottom = prc->bottom - margin;
     rc.right = rc.left + (dim * 5 / 2);
     rc.top = rc.bottom - dim;
-    m_buttons.AddButton(IDM_SUMMARY, rc, TEXT("Summary"));
+    m_buttons.AddButton(IDM_SUMMARY, rc, TEXT("Summary"), TEXT("Summary of Drives"));
 
     rc.left = prc->left + margin;
     rc.top = prc->top + m_top_reserve + m_margin_reserve + m_top_reserve + m_top_reserve + margin;
@@ -1803,7 +1821,9 @@ void MainWindow::OnLayout(RECT* prc)
     {
         if (rc.bottom > prc->bottom - margin - dim - margin)
             break;
-        m_buttons.AddButton(IDM_DRIVE_FIRST + ii, rc, m_drives[ii].c_str());
+        std::wstring desc = TEXT("Scan ");
+        desc.append(m_drives[ii].c_str());
+        m_buttons.AddButton(IDM_DRIVE_FIRST + ii, rc, m_drives[ii].c_str(), desc.c_str());
         OffsetRect(&rc, 0, dim + margin);
     }
 }
