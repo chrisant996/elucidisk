@@ -1273,10 +1273,11 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             GetCursorPos(&pt);
             ScreenToClient(m_hwnd, &pt);
 
-            std::shared_ptr<Node> hover(m_hover_node);
+            const std::shared_ptr<Node> hover(m_hover_node);
+            const bool hover_free = m_hover_free;
             m_hover_node = m_sunburst.HitTest(pt, &m_hover_free);
 
-            if (hover != m_hover_node)
+            if (hover != m_hover_node || hover_free != m_hover_free)
                 InvalidateRect(m_hwnd, nullptr, false);
 
             if (hover)
