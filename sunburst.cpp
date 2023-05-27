@@ -412,7 +412,7 @@ struct SunburstMetrics
 #endif
     }
 
-    FLOAT get_thickness(size_t depth)
+    FLOAT get_thickness(size_t depth) const
     {
 #ifdef USE_PROPORTIONAL_RING_THICKNESS
         return (depth < _countof(thicknesses)) ? thicknesses[depth] : 0.0f;
@@ -936,18 +936,32 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
 
 void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight)
 {
-    ID2D1RenderTarget* pTarget = target.Target();
     SPI<ID2D1Geometry> spHighlight;
+
+    // Two passes, so files are "beneath" everything else.
+
+    SunburstMetrics mx(m_dpi, m_bounds);
+    RenderRingsInternal(target, mx, highlight, true/*files*/, spHighlight);
+    RenderRingsInternal(target, mx, highlight, false/*files*/, spHighlight);
+
+    // Hover highlight.
+
+    if (spHighlight && (!highlight->GetParent() || is_root_finished(highlight)))
+        target.Target()->DrawGeometry(spHighlight, target.LineBrush(), mx.stroke * 2.0f);
+}
+
+void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight, bool files, SPI<ID2D1Geometry>& spHighlight)
+{
+    ID2D1RenderTarget* pTarget = target.Target();
 
     assert(m_bounds.left < m_bounds.right);
     assert(m_bounds.top < m_bounds.bottom);
 
-    SPI<ID2D1Layer> spFileLayer;
-    D2D1_LAYER_PARAMETERS fileLayerParams = D2D1::LayerParameters(
-        m_bounds, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), 0.60f);
-    pTarget->CreateLayer(&spFileLayer);
-
-    SunburstMetrics mx(m_dpi, m_bounds);
+    SPI<ID2D1Layer> spLayer;
+    D2D1_LAYER_PARAMETERS layerParams = D2D1::LayerParameters(
+        m_bounds, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), files ? 0.60f : 1.0f);
+    pTarget->CreateLayer(&spLayer);
+    pTarget->PushLayer(layerParams, spLayer);
 
     ID2D1SolidColorBrush* pLineBrush = target.LineBrush();
     ID2D1SolidColorBrush* pFileLineBrush = target.FileLineBrush();
@@ -957,6 +971,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
     // Outer boundary outline.
 
+    if (!files)
     {
         D2D1_ELLIPSE ellipse;
         ellipse.point = m_center;
@@ -970,6 +985,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
     // Center circle or pie slices.
 
 // TODO: Cache geometries for faster repainting?
+    if (!files)
     {
         D2D1_ELLIPSE ellipse;
         ellipse.point = m_center;
@@ -1036,8 +1052,6 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
         if (highlight)
         {
-            spHighlight.Release();
-
             FLOAT end = m_start_angles[0];
             for (size_t ii = m_roots.size(); ii--;)
             {
@@ -1045,6 +1059,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
                 if (highlight == m_roots[ii])
                 {
+                    spHighlight.Release();
                     if (SUCCEEDED(MakeArcGeometry(target, start, end, 0.0f, mx.center_radius, &spHighlight)))
                         break;
                 }
@@ -1075,6 +1090,8 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
         for (const auto arc : m_rings[depth])
         {
             const bool isFile = !!arc.m_node->AsFile();
+            if (isFile != files)
+                continue;
             if (isFile && !arc.m_node->IsParentFinished())
                 continue;
 
@@ -1085,9 +1102,6 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
                 pFillBrush->SetColor(MakeColor(arc, depth, isHighlight));
 
-                if (isFile)
-                    pTarget->PushLayer(fileLayerParams, spFileLayer);
-
                 pTarget->FillGeometry(spGeometry, pFillBrush);
                 pTarget->DrawGeometry(spGeometry, isFile ? pFileLineBrush : pLineBrush, mx.stroke);
 
@@ -1095,12 +1109,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
                     DrawArcText(target, arc, arctext_radius);
 
                 if (isHighlight)
-                {
                     spHighlight.Set(spGeometry);
-                }
-
-                if (isFile)
-                    pTarget->PopLayer();
             }
         }
 
@@ -1117,6 +1126,8 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
         for (const auto arc : m_rings[depth])
         {
             const bool isFile = !!arc.m_node->AsFile();
+            if (isFile != files)
+                continue;
             if (isFile && !arc.m_node->IsParentFinished())
                 continue;
 
@@ -1133,13 +1144,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
     }
 
-    // Hover highlight.
-
-    if (spHighlight)
-    {
-        if (!highlight->GetParent() || is_root_finished(highlight))
-            pTarget->DrawGeometry(spHighlight, pLineBrush, mx.stroke * 2.0f);
-    }
+    pTarget->PopLayer();
 }
 
 void Sunburst::FormatSize(const ULONGLONG size, std::wstring& text, std::wstring& units, int places)

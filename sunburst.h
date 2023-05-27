@@ -13,6 +13,7 @@
 #include "TextOnPath/PathTextRenderer.h"
 
 class DirNode;
+struct SunburstMetrics;
 
 HRESULT InitializeD2D();
 HRESULT InitializeDWrite();
@@ -90,6 +91,7 @@ protected:
 #endif
     bool                    MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, FLOAT inner_radius, FLOAT outer_radius, ID2D1Geometry** ppGeometry);
     void                    DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT radius);
+    void                    RenderRingsInternal(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight, bool files, SPI<ID2D1Geometry>& spHighlight);
 
 private:
     DpiScaler               m_dpi;
