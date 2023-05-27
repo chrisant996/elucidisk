@@ -903,7 +903,7 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
             outer.arcSize = GetArcSize(start, end);
             spSink->AddArc(outer);
 
-            spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            spSink->EndFigure(D2D1_FIGURE_END_OPEN);
             spSink->Close();
         }
 

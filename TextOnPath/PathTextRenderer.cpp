@@ -103,8 +103,6 @@ HRESULT PathTextRenderer::DrawGlyphRun(
         );
 // BEGIN_CHANGE
         if (FAILED(hr)) return hr;
-        // Don't wrap around to the other side.
-        maxLength /= 2;
         // Allow a little padding for readability.
         maxLength -= 2.0f * m_pixelsPerDip / 96.0f;
     }
