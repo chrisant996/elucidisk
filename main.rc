@@ -24,6 +24,14 @@ BEGIN
         MENUITEM "Show &Names",             IDM_OPTION_NAMES
         MENUITEM "Show &Free Space",        IDM_OPTION_FREESPACE
         MENUITEM "Show &Compressed Sizes",  IDM_OPTION_COMPRESSED
+#ifdef DEBUG
+        MENUITEM SEPARATOR
+        MENUITEM "Use Real Data",           IDM_OPTION_REALDATA
+        MENUITEM "Use Simulated Data",      IDM_OPTION_SIMULATED
+        MENUITEM "Use Color Wheel Data",    IDM_OPTION_COLORWHEEL
+        MENUITEM "Use Empty Drive Data",    IDM_OPTION_EMPTYDRIVE
+        MENUITEM "Use Only Dirs Data",      IDM_OPTION_ONLYDIRS
+#endif
     END
 END
 

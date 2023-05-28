@@ -24,6 +24,7 @@ class DriveNode;
 
 #ifdef DEBUG
 LONG CountNodes();
+bool SetFake(bool fake);
 #endif
 
 class Node : public std::enable_shared_from_this<Node>
@@ -48,10 +49,16 @@ public:
     bool                    IsCompressed() const { return m_compressed; }
     virtual bool            IsRecycleBin() const { return false; }
     virtual bool            IsDrive() const { return false; }
+#ifdef DEBUG
+    bool                    IsFake() const { return m_fake; }
+#endif
 protected:
     const std::weak_ptr<DirNode> m_parent;
     const std::wstring      m_name;
     bool                    m_compressed = false;
+#ifdef DEBUG
+    const bool              m_fake = false;
+#endif
 };
 
 class DirNode : public Node

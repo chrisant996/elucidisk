@@ -17,6 +17,10 @@ extern bool g_use_compressed_size;
 extern bool g_show_free_space;
 extern bool g_show_names;
 extern bool g_rainbow;
+#ifdef DEBUG
+extern long g_fake_data;
+enum FakeDataMode { FDM_REAL, FDM_SIMULATED, FDM_COLORWHEEL, FDM_EMPTYDRIVE, FDM_ONLYDIRS };
+#endif
 
 void MakeMenuPretty(HMENU hmenu);
 

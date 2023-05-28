@@ -18,6 +18,14 @@
 #define IDM_OPTION_NAMES        2102
 #define IDM_OPTION_RAINBOW      2103
 
+#ifdef DEBUG
+#define IDM_OPTION_REALDATA     2180
+#define IDM_OPTION_SIMULATED    2181
+#define IDM_OPTION_COLORWHEEL   2182
+#define IDM_OPTION_EMPTYDRIVE   2183
+#define IDM_OPTION_ONLYDIRS     2184
+#endif
+
 #define IDM_REFRESH             2200
 #define IDM_BACK                2201
 #define IDM_UP                  2202

@@ -4,6 +4,18 @@
 #include "main.h"
 #include "data.h"
 #include <shellapi.h>
+#include <assert.h>
+
+#ifdef DEBUG
+static thread_local bool s_make_fake = false;
+
+bool SetFake(bool fake)
+{
+    const bool was = s_make_fake;
+    s_make_fake = fake;
+    return was;
+}
+#endif
 
 void ensure_separator(std::wstring& path)
 {
@@ -72,6 +84,9 @@ LONG CountNodes() { return s_cNodes; }
 Node::Node(const WCHAR* name, const std::shared_ptr<DirNode>& parent)
 : m_name(name)
 , m_parent(parent)
+#ifdef DEBUG
+, m_fake(s_make_fake)
+#endif
 {
 #ifdef DEBUG
     InterlockedIncrement(&s_cNodes);
@@ -216,6 +231,8 @@ void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
 
 void DirNode::UpdateRecycleBinMetadata(ULONGLONG size)
 {
+    assert(!IsFake());
+
     GetParent()->m_size -= m_size;
     m_size = size;
     GetParent()->m_size += m_size;
@@ -223,6 +240,8 @@ void DirNode::UpdateRecycleBinMetadata(ULONGLONG size)
 
 void RecycleBinNode::UpdateRecycleBin()
 {
+    assert(!IsFake());
+
     const WCHAR* drive = GetParent()->GetName();
     ULONGLONG size = 0;
 
@@ -235,6 +254,8 @@ void RecycleBinNode::UpdateRecycleBin()
 
 void DriveNode::AddRecycleBin()
 {
+    assert(!IsFake());
+
     const std::shared_ptr<DirNode> parent = std::static_pointer_cast<DirNode>(shared_from_this());
     {
         std::lock_guard<std::mutex> lock(m_mutex);

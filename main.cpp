@@ -15,6 +15,9 @@ bool g_use_compressed_size = false;
 bool g_show_free_space = true;
 bool g_show_names = true;
 bool g_rainbow = true;
+#ifdef DEBUG
+long g_fake_data = FDM_REAL;
+#endif
 
 int PASCAL WinMain(
     _In_ HINSTANCE hinstCurrent,
@@ -49,6 +52,9 @@ int PASCAL WinMain(
     g_show_free_space = !!ReadRegLong(TEXT("ShowFreeSpace"), true);
     g_show_names = !!ReadRegLong(TEXT("ShowNames"), true);
     g_rainbow = !!ReadRegLong(TEXT("Rainbow"), true);
+#ifdef DEBUG
+    g_fake_data = ReadRegLong(TEXT("DbgFakeData"), FDM_REAL);
+#endif
 
     const HWND hwnd = MakeUi(hinstCurrent, argc, argv);
 

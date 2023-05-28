@@ -1506,6 +1506,17 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 CheckMenuItem(hmenuSub, IDM_OPTION_NAMES, MF_BYCOMMAND|MF_CHECKED);
             if (g_rainbow)
                 CheckMenuItem(hmenuSub, IDM_OPTION_RAINBOW, MF_BYCOMMAND|MF_CHECKED);
+#ifdef DEBUG
+            CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
+            if (g_fake_data)
+            {
+                EnableMenuItem(hmenuSub, IDM_OPEN_FILE, MF_BYCOMMAND|MF_GRAYED);
+                EnableMenuItem(hmenuSub, IDM_OPEN_DIRECTORY, MF_BYCOMMAND|MF_GRAYED);
+                EnableMenuItem(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+                EnableMenuItem(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+                EnableMenuItem(hmenuSub, IDM_EMPTY_RECYCLEBIN, MF_BYCOMMAND|MF_GRAYED);
+            }
+#endif
 
             MakeMenuPretty(hmenuSub);
 
@@ -1532,7 +1543,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 }
             }
 
-            switch (TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr))
+            const UINT idm = TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr);
+            switch (idm)
             {
             case IDM_OPEN_DIRECTORY:
             case IDM_OPEN_FILE:
@@ -1592,6 +1604,24 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 WriteRegLong(TEXT("Rainbow"), g_rainbow);
                 InvalidateRect(m_hwnd, nullptr, false);
                 break;
+
+#ifdef DEBUG
+            case IDM_OPTION_REALDATA:
+            case IDM_OPTION_SIMULATED:
+            case IDM_OPTION_COLORWHEEL:
+            case IDM_OPTION_EMPTYDRIVE:
+            case IDM_OPTION_ONLYDIRS:
+                {
+                    const long fake_data = idm - IDM_OPTION_REALDATA;
+                    if (fake_data != g_fake_data)
+                    {
+                        g_fake_data = fake_data;
+                        WriteRegLong(TEXT("DbgFakeData"), g_fake_data);
+                        Rescan();
+                    }
+                }
+                break;
+#endif
             }
 
             DestroyMenu(hmenu);

@@ -6,12 +6,6 @@
 #include "scan.h"
 #include <shellapi.h>
 
-//#define USE_FAKE_DATA
-
-#ifdef USE_FAKE_DATA
-#define MAKE_COLOR_WHEEL
-#endif
-
 static void skip_separators(const WCHAR*& path)
 {
     while (is_separator(*path))
@@ -83,27 +77,29 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
         root = std::make_shared<DirNode>(path.c_str());
     }
 
-#ifndef USE_FAKE_DATA
-    DriveNode* drive = root->AsDrive();
-    if (drive)
+#ifdef DEBUG
+    if (!g_fake_data)
+#endif
     {
-        DWORD sectors_per_cluster;
-        DWORD bytes_per_sector;
-        DWORD free_clusters;
-        DWORD total_clusters;
-        if (GetDiskFreeSpace(root->GetName(), &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
+        DriveNode* drive = root->AsDrive();
+        if (drive)
         {
-            const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
-            drive->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
+            DWORD sectors_per_cluster;
+            DWORD bytes_per_sector;
+            DWORD free_clusters;
+            DWORD total_clusters;
+            if (GetDiskFreeSpace(root->GetName(), &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
+            {
+                const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
+                drive->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
+            }
         }
     }
-#endif
 
     return root;
 }
 
-#ifdef USE_FAKE_DATA
-#ifdef MAKE_COLOR_WHEEL
+#ifdef DEBUG
 void AddColorWheelDir(const std::shared_ptr<DirNode> parent, const WCHAR* name, int depth, ScanFeedback& feedback)
 {
     depth--;
@@ -121,55 +117,79 @@ void AddColorWheelDir(const std::shared_ptr<DirNode> parent, const WCHAR* name, 
 
     parent->Finish();
 }
-#endif
 
 static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool include_free_space, ScanFeedback& feedback)
 {
-    static const ULONGLONG units = 1024;
-
-    std::vector<std::shared_ptr<DirNode>> dirs;
-
-#ifdef MAKE_COLOR_WHEEL
-    for (int ii = 0; ii < 360; ii += 10)
+    switch (g_fake_data)
     {
-        WCHAR sz[100];
-        swprintf_s(sz, _countof(sz), TEXT("%u to %u"), ii, ii + 10);
-        AddColorWheelDir(root, sz, 10, feedback);
-    }
-#else
-    if (include_free_space)
-    {
-        DriveNode* drive = root->AsDrive();
-        dirs.emplace_back(root->AddDir(TEXT("Abc")));
-        dirs.emplace_back(root->AddDir(TEXT("Def")));
-
-        std::recursive_mutex> lock(feedback.mutex);
-
-        drive->AddFreeSpace(1000 * units, 2000 * units);
-    }
-    else if (root->GetParent() && root->GetParent()->GetParent())
-    {
-        return;
-    }
-    else
-    {
-        std::recursive_mutex> lock(feedback.mutex);
-
-        root->AddFile(TEXT("Red"), 4000 * units);
-        root->AddFile(TEXT("Green"), 8000 * units);
-        if (index > 0)
+    case FDM_COLORWHEEL:
+        for (int ii = 0; ii < 360; ii += 10)
         {
-            std::shared_ptr<DirNode> d = root->AddDir(TEXT("Blue"));
-            d->AddFile(TEXT("Lightning"), 12000 * units);
-            d->Finish();
+            WCHAR sz[100];
+            swprintf_s(sz, _countof(sz), TEXT("%u to %u"), ii, ii + 10);
+            AddColorWheelDir(root, sz, ii ? 10 : 11, feedback);
         }
-    }
+        break;
 
-    for (size_t ii = 0; ii < dirs.size(); ++ii)
-        FakeScan(dirs[ii], ii, false, feedback);
+    default:
+    case FDM_SIMULATED:
+        {
+            static const ULONGLONG units = 1024;
+
+            std::vector<std::shared_ptr<DirNode>> dirs;
+
+            if (include_free_space)
+            {
+                DriveNode* drive = root->AsDrive();
+                dirs.emplace_back(root->AddDir(TEXT("Abc")));
+                dirs.emplace_back(root->AddDir(TEXT("Def")));
+
+                std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+
+                drive->AddFreeSpace(1000 * units, 2000 * units);
+            }
+            else if (root->GetParent() && root->GetParent()->GetParent())
+            {
+                return;
+            }
+            else
+            {
+                std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+
+                root->AddFile(TEXT("Red"), 4000 * units);
+                root->AddFile(TEXT("Green"), 8000 * units);
+                if (index > 0)
+                {
+                    std::shared_ptr<DirNode> d = root->AddDir(TEXT("Blue"));
+                    d->AddFile(TEXT("Lightning"), 12000 * units);
+                    d->Finish();
+                }
+            }
+
+            for (size_t ii = 0; ii < dirs.size(); ++ii)
+                FakeScan(dirs[ii], ii, false, feedback);
+        }
+        break;
+
+    case FDM_EMPTYDRIVE:
+        break;
+
+    case FDM_ONLYDIRS:
+        {
+            std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+
+            std::vector<std::shared_ptr<DirNode>> dirs;
+            dirs.emplace_back(root->AddDir(TEXT("Abc")));
+            dirs.emplace_back(root->AddDir(TEXT("Def")));
+            dirs.emplace_back(root->AddDir(TEXT("Ghi")));
+
+            for (auto& dir : dirs)
+                dir->Finish();
+        }
+        break;
+    }
 
     root->Finish();
-#endif
 }
 #endif
 
@@ -179,10 +199,12 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
     root->GetFullPath(find);
     ensure_separator(find);
 
-#ifdef USE_FAKE_DATA
-    if (GetTickCount() != 0)
+#ifdef DEBUG
+    if (g_fake_data)
     {
+        const bool was = SetFake(true);
         FakeScan(root, 0, true, feedback);
+        SetFake(was);
         return;
     }
 #endif
