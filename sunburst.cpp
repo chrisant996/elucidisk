@@ -967,6 +967,10 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
     assert(m_bounds.left < m_bounds.right);
     assert(m_bounds.top < m_bounds.bottom);
 
+// TODO: Direct2D documentation recommends caching a bitmap for performance,
+// instead of caching geometries.  The highlight can be calculated on the fly
+// as needed.
+
     SPI<ID2D1Layer> spLayer;
     D2D1_LAYER_PARAMETERS layerParams = D2D1::LayerParameters(
         m_bounds, 0, D2D1_ANTIALIAS_MODE_ALIASED, D2D1::Matrix3x2F::Identity(), files ? 0.60f : 1.0f);
