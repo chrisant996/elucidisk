@@ -104,20 +104,26 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
 
 #ifdef USE_FAKE_DATA
 #ifdef MAKE_COLOR_WHEEL
-void AddColorWheelDir(const std::shared_ptr<DirNode> parent, const WCHAR* name, int depth)
+void AddColorWheelDir(const std::shared_ptr<DirNode> parent, const WCHAR* name, int depth, ScanFeedback& feedback)
 {
     depth--;
 
     if (!depth)
+    {
+        std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+
         parent->AddFile(TEXT("x"), 1000);
+    }
     else
-        AddColorWheelDir(parent->AddDir(name), name, depth);
+    {
+        AddColorWheelDir(parent->AddDir(name), name, depth, feedback);
+    }
 
     parent->Finish();
 }
 #endif
 
-static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool include_free_space)
+static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool include_free_space, ScanFeedback& feedback)
 {
     static const ULONGLONG units = 1024;
 
@@ -128,7 +134,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
     {
         WCHAR sz[100];
         swprintf_s(sz, _countof(sz), TEXT("%u to %u"), ii, ii + 10);
-        AddColorWheelDir(root, sz, 10);
+        AddColorWheelDir(root, sz, 10, feedback);
     }
 #else
     if (include_free_space)
@@ -136,6 +142,9 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
         DriveNode* drive = root->AsDrive();
         dirs.emplace_back(root->AddDir(TEXT("Abc")));
         dirs.emplace_back(root->AddDir(TEXT("Def")));
+
+        std::recursive_mutex> lock(feedback.mutex);
+
         drive->AddFreeSpace(1000 * units, 2000 * units);
     }
     else if (root->GetParent() && root->GetParent()->GetParent())
@@ -144,6 +153,8 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
     }
     else
     {
+        std::recursive_mutex> lock(feedback.mutex);
+
         root->AddFile(TEXT("Red"), 4000 * units);
         root->AddFile(TEXT("Green"), 8000 * units);
         if (index > 0)
@@ -155,7 +166,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
     }
 
     for (size_t ii = 0; ii < dirs.size(); ++ii)
-        FakeScan(dirs[ii], ii, false);
+        FakeScan(dirs[ii], ii, false, feedback);
 
     root->Finish();
 #endif
@@ -171,7 +182,7 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
 #ifdef USE_FAKE_DATA
     if (GetTickCount() != 0)
     {
-        FakeScan(root, 0, true);
+        FakeScan(root, 0, true, feedback);
         return;
     }
 #endif
