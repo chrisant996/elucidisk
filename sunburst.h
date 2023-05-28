@@ -12,6 +12,8 @@
 #include <dwrite_2.h>
 #include "TextOnPath/PathTextRenderer.h"
 
+#define USE_MIN_ARC_LENGTH              // Likely permanent.
+
 class DirNode;
 struct SunburstMetrics;
 

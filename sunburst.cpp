@@ -18,7 +18,8 @@ constexpr WCHAR c_arcfontface[] = TEXT("Segoe UI");
 constexpr FLOAT c_arcfontsize = 8.0f;
 
 #ifdef USE_MIN_ARC_LENGTH
-# define _PASS_MIN_ARC_LENGTH   , outer_radius, mx.min_arc
+# define _PASS_MIN_ARC_LENGTH   , outer_radius, min_arc
+constexpr FLOAT c_minArc = 2.5f;
 #else
 # define _PASS_MIN_ARC_LENGTH
 constexpr FLOAT c_minAngle = 1.1f;
@@ -373,7 +374,7 @@ struct SunburstMetrics
     , max_radius(boundary_radius - (margin + indicator_thickness + margin))
     , range_radius(max_radius - center_radius)
 #ifdef USE_MIN_ARC_LENGTH
-    , min_arc(FLOAT(dpi.Scale(3)))
+    , min_arc(dpi.ScaleF(c_minArc))
 #endif
 #ifndef USE_PROPORTIONAL_RING_THICKNESS
     , thickness(FLOAT(dpi.Scale(c_thickness)))
@@ -582,6 +583,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 
 #ifdef USE_MIN_ARC_LENGTH
     FLOAT outer_radius = mx.center_radius + mx.get_thickness(0);
+    const FLOAT min_arc = mx.min_arc;
 #endif
 
     for (size_t ii = 0; ii < roots.size(); ++ii)
