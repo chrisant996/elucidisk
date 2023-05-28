@@ -1562,6 +1562,22 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             }
 #endif
 
+            // Only test if path is system or special if the Recycle or Delete
+            // commands are present.
+            {
+                MENUITEMINFO mii = { sizeof(mii) };
+                mii.fMask = MIIM_ID;
+                if (GetMenuItemInfo(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND, &mii) ||
+                    GetMenuItemInfo(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND, &mii))
+                {
+                    if (IsSystemOrSpecial(path.c_str()))
+                    {
+                        EnableMenuItem(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+                        EnableMenuItem(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+                    }
+                }
+            }
+
             MakeMenuPretty(hmenuSub);
 
             if (recycle)
