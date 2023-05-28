@@ -11,7 +11,15 @@ static ID2D1Factory* s_pD2DFactory = nullptr;
 static IDWriteFactory2* s_pDWriteFactory = nullptr;
 
 constexpr FLOAT M_PI = 3.14159265358979323846f;
+#ifdef USE_FIXED_CENTER_RADIUS
 constexpr int c_centerRadius = 50;
+#elif defined(USE_LARGER_RINGS)
+constexpr FLOAT c_centerRadiusRatio = 0.25f;
+constexpr int c_centerRadiusMin = 50;
+#else
+constexpr FLOAT c_centerRadiusRatio = 0.25f;
+constexpr int c_centerRadiusMin = 50;
+#endif
 constexpr FLOAT c_rotation = -90.0f;
 
 constexpr WCHAR c_arcfontface[] = TEXT("Segoe UI");
@@ -26,6 +34,7 @@ constexpr FLOAT c_minAngle = 1.1f;
 #endif
 
 #ifdef USE_PROPORTIONAL_RING_THICKNESS
+constexpr int c_max_thickness = 45;
 #else
 constexpr int c_thickness = 25;
 constexpr int c_retrograde = 1;
@@ -368,9 +377,13 @@ struct SunburstMetrics
     SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds)
     : stroke(FLOAT(dpi.Scale(1)))
     , margin(FLOAT(dpi.Scale(5)))
-    , indicator_thickness(dpi.ScaleF(4))
+    , indicator_thickness(FLOAT(dpi.Scale(4)))
+    , boundary_radius(FLOAT(std::min<LONG>(LONG(bounds.right - bounds.left), LONG(bounds.bottom - bounds.top)) / 2 - margin))
+#ifdef USE_FIXED_CENTER_RADIUS
     , center_radius(FLOAT(dpi.Scale(c_centerRadius)))
-    , boundary_radius(std::min<FLOAT>(bounds.right - bounds.left, bounds.bottom - bounds.top) / 2 - margin)
+#else
+    , center_radius(std::max<FLOAT>(boundary_radius * c_centerRadiusRatio, FLOAT(dpi.Scale(c_centerRadiusMin))))
+#endif
     , max_radius(boundary_radius - (margin + indicator_thickness + margin))
     , range_radius(max_radius - center_radius)
 #ifdef USE_MIN_ARC_LENGTH
@@ -382,35 +395,26 @@ struct SunburstMetrics
 #endif
     {
 #ifdef USE_PROPORTIONAL_RING_THICKNESS
-        static constexpr float c_rings[] =
+#ifdef USE_LARGER_RINGS
+        const FLOAT coefficient = 0.18f;
+        FLOAT thickness = std::min<FLOAT>(boundary_radius * coefficient, FLOAT(dpi.Scale(c_max_thickness)));
+        FLOAT retrograde = 0.25f;
+        for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
         {
-            0.20f,
-            0.17f,
-            0.14f,
-            0.12f,
-            0.10f,
-            0.08f,
-            0.065f,
-            0.05f,
-            0.04f,
-            0.035f,
-        };
-        static_assert(_countof(c_rings) == _countof(thicknesses), "array size mismatch");
-        static_assert(c_rings[0] + c_rings[1] + c_rings[2] + c_rings[3] +
-                      c_rings[4] + c_rings[5] + c_rings[6] + c_rings[7] +
-                      c_rings[8] + c_rings[9] > 0.999f, "must total 100%");
-        static_assert(c_rings[0] + c_rings[1] + c_rings[2] + c_rings[3] +
-                      c_rings[4] + c_rings[5] + c_rings[6] + c_rings[7] +
-                      c_rings[8] + c_rings[9] < 1.001f, "must total 100%");
-        FLOAT scale = 0;
-        if (max_depth > _countof(c_rings))
-            max_depth = _countof(c_rings);
-        for (size_t ii = 0; ii < std::max<size_t>(max_depth, 5); ++ii)
-            scale += c_rings[ii];
-        for (size_t ii = 0; ii < max_depth; ++ii)
-            thicknesses[ii] = c_rings[ii] * range_radius / scale;
-        for (size_t ii = max_depth; ii < _countof(c_rings); ++ii)
-            thicknesses[ii] = 0.0f;
+            thicknesses[ii] = FLOAT(LONG(thickness));
+            thickness -= thickness * retrograde;
+            retrograde *= 0.666f;
+        }
+#else
+        FLOAT coefficient = 0.48f;
+        const FLOAT retrograde = 0.87f;
+        for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
+        {
+            const FLOAT thickness = center_radius * coefficient;
+            thicknesses[ii] = thickness;
+            coefficient *= retrograde;
+        }
+#endif
 #endif
     }
 
@@ -426,8 +430,8 @@ struct SunburstMetrics
     const FLOAT stroke;
     const FLOAT margin;
     const FLOAT indicator_thickness;
-    const FLOAT center_radius;
     const FLOAT boundary_radius;
+    const FLOAT center_radius;
     const FLOAT max_radius;
     const FLOAT range_radius;
 #ifdef USE_MIN_ARC_LENGTH

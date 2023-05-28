@@ -14,6 +14,9 @@
 
 #define USE_MIN_ARC_LENGTH              // Likely permanent.
 
+#define USE_FIXED_CENTER_RADIUS         // Undecided.
+//#define USE_PROPORTIONAL_RING_THICKNESS // Maybe an option.
+//#define USE_LARGER_RINGS                // Undecided.
 //#define USE_CHART_OUTLINE               // Experimenting with this off.
 
 class DirNode;
