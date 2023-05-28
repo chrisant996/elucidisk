@@ -42,6 +42,7 @@ public:
     ID2D1DeviceContext*     Context() const { return m_spContext; }
     IDWriteTextFormat*      TextFormat() const { return m_spTextFormat; }
     PathTextRenderer*       TextRenderer() const { return m_spPathTextRenderer; }
+    FLOAT                   FontSize() const { return m_arcFontSize; }
 
 private:
     HWND                        m_hwnd = 0;
@@ -57,6 +58,7 @@ private:
     SPI<IDWriteTextFormat>      m_spTextFormat;
     SPI<IDWriteRenderingParams> m_spRenderingParams;
     SPI<PathTextRenderer>       m_spPathTextRenderer;
+    FLOAT                       m_arcFontSize = 0.0f;
 };
 
 class Sunburst

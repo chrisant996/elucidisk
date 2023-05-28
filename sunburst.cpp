@@ -305,13 +305,14 @@ LError:
             DWRITE_RENDERING_MODE_OUTLINE,
             &m_spRenderingParams));
 
+    m_arcFontSize = FLOAT(-dpi.PointSizeToHeight(c_arcfontsize));
     ERRJMP(m_spDWriteFactory->CreateTextFormat(
             c_arcfontface,
             nullptr,
             DWRITE_FONT_WEIGHT_REGULAR,
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
-            FLOAT(-dpi.PointSizeToHeight(c_arcfontsize)),
+            m_arcFontSize,
             TEXT("en-US"),
             &m_spTextFormat));
 
@@ -978,7 +979,7 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
     ID2D1SolidColorBrush* pFileLineBrush = target.FileLineBrush();
     ID2D1SolidColorBrush* pFillBrush = target.FillBrush();
 
-    const bool show_names = (g_show_names && target.DWriteFactory());
+    bool show_names = (g_show_names && target.DWriteFactory());
 
     // Outer boundary outline.
 
@@ -1092,11 +1093,14 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
         if (thickness <= 0.0f)
             break;
 
+        if (thickness < target.FontSize() + m_dpi.Scale(4))
+            show_names = false;
+
         const FLOAT outer_radius = inner_radius + thickness;
         if (outer_radius > mx.max_radius)
             break;
 
-        const FLOAT arctext_radius = outer_radius - (-m_dpi.PointSizeToHeight(c_arcfontsize));
+        const FLOAT arctext_radius = outer_radius - target.FontSize();
 
         for (const auto arc : m_rings[depth])
         {
