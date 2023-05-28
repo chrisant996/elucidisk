@@ -903,8 +903,7 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
     text.append(TEXT(" "));
 
     SPI<IDWriteTextLayout> spTextLayout;
-// TODO: The 1000 and 200 are placeholders.
-    if (FAILED(pFactory->CreateTextLayout(text.c_str(), UINT32(text.length()), target.TextFormat(), 1000.0f, 200.0f, &spTextLayout)))
+    if (FAILED(pFactory->CreateTextLayout(text.c_str(), UINT32(text.length()), target.TextFormat(), 1000.0f, 50.0f, &spTextLayout)))
         return;
 
     const FLOAT start = arc.m_start + c_rotation;
@@ -967,9 +966,9 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
     assert(m_bounds.left < m_bounds.right);
     assert(m_bounds.top < m_bounds.bottom);
 
-// TODO: Direct2D documentation recommends caching a bitmap for performance,
-// instead of caching geometries.  The highlight can be calculated on the fly
-// as needed.
+    // FUTURE: Direct2D documentation recommends caching a bitmap for performance,
+    // instead of caching geometries.  The highlight can be calculated on the fly
+    // as needed.
 
     SPI<ID2D1Layer> spLayer;
     D2D1_LAYER_PARAMETERS layerParams = D2D1::LayerParameters(
@@ -1000,7 +999,6 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
 
     // Center circle or pie slices.
 
-// TODO: Cache geometries for faster repainting?
     if (!files)
     {
         D2D1_ELLIPSE ellipse;

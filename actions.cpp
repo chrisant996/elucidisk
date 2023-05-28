@@ -50,7 +50,7 @@ bool ShellRecycle(HWND hwnd, const WCHAR* _path)
 
 bool ShellDelete(HWND hwnd, const WCHAR* path)
 {
-// TODO: Permanently delete.
+    // FUTURE: Permanently delete?
     return false;
 }
 
