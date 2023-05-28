@@ -977,6 +977,7 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
 
     // Outer boundary outline.
 
+#ifdef USE_CHART_OUTLINE
     if (!files)
     {
         D2D1_ELLIPSE ellipse;
@@ -987,6 +988,7 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
         pFillBrush->SetColor(D2D1::ColorF(D2D1::ColorF::LightGray));
         pTarget->DrawEllipse(ellipse, pFillBrush, mx.stroke);
     }
+#endif
 
     // Center circle or pie slices.
 

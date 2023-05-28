@@ -14,6 +14,8 @@
 
 #define USE_MIN_ARC_LENGTH              // Likely permanent.
 
+//#define USE_CHART_OUTLINE               // Experimenting with this off.
+
 class DirNode;
 struct SunburstMetrics;
 
