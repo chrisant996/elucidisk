@@ -542,18 +542,10 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             grand_total += totals.back();
         }
 
-        if (grand_total == 0)
-        {
-            for (size_t ii = 0; ii < totals.size(); ++ii)
-            {
-                totals[ii] = 1;
-                used[ii] = 1;
-                // scale should be fine already; it handles 0 explicitly.
-                grand_total += totals[ii];
-            }
-        }
-
         m_units = AutoUnitScale(ULONGLONG(grand_total));
+
+        if (grand_total == 0)
+            return;
 
         double sweep = 0;
         for (size_t ii = 0; ii < roots.size(); ++ii)
