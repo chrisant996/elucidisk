@@ -114,3 +114,56 @@ private:
     SPQI(SPQI<IFace, iid> const&) = delete;
 };
 
+//----------------------------------------------------------------------------
+// Smart handle.
+
+// NOTE: a compiler bug forces us to use DWORD_PTR instead of Type.
+template<class Type, DWORD_PTR EmptyValue, class Subclass>
+class SH : public Subclass
+{
+public:
+    SH(Type h = Type(EmptyValue))   { m_h = h; }
+    ~SH()                           { if (Type(EmptyValue) != m_h) Subclass::Free(m_h); }
+    SH(SH<Type,EmptyValue,Subclass>&& other) { m_h = other.m_h; other.m_h = Type(EmptyValue); }
+    operator Type() const           { return m_h; }
+    Type Handle() const             { return m_h; }
+    Type* operator&()               { assert(Type(EmptyValue) == m_h); return &m_h; }
+    Type operator=(Type h)          { assert(Type(EmptyValue) == m_h); return m_h = h; }
+    Type operator=(SH<Type,EmptyValue,Subclass>&& other) { assert(Type(EmptyValue) == m_h); m_h = other.m_h; other.m_h = 0; return m_h; }
+    void Set(Type h)                { if (Type(EmptyValue) != m_h) Subclass::Free(m_h); m_h = h; }
+    Type Transfer()                 { return Detach(); }
+    void Free()                     { if (Type(EmptyValue) != m_h) Subclass::Free(m_h); m_h = Type(EmptyValue); }
+    void Close()                    { Free(); }
+    void Attach(Type h)             { if (m_h != h) Free(); m_h = h; }
+    Type Detach()                   { Type h = m_h; m_h = Type(EmptyValue); return h; }
+    bool operator!() const          { static_assert(EmptyValue == 0, "operator! requires empty value == 0"); return !m_h; }
+    bool IsEmpty() const            { return EmptyValue == reinterpret_cast<DWORD_PTR>(m_h); }
+
+    Type* UnsafeAddress()           { return &m_h; }
+
+protected:
+    Type m_h;
+
+private:
+    SH<Type, EmptyValue, Subclass> &operator=(SH<Type, EmptyValue, Subclass> const& sh) = delete;
+    SH(SH<Type, EmptyValue, Subclass> const&) = delete;
+};
+
+class SH_CloseHandle { protected: void Free(HANDLE h) { CloseHandle(h); } };
+class SH_FindClose { protected: void Free(HANDLE h) { FindClose(h); } };
+class SH_RegCloseKey { protected: void Free(HKEY hkey) { RegCloseKey(hkey); } };
+class SH_DeleteObject { protected: void Free(HGDIOBJ hobj) { DeleteObject(hobj); } };
+class SH_DestroyCursor { protected: void Free(HCURSOR hcur) { DestroyCursor(hcur); } };
+class SH_DestroyIcon { protected: void Free(HICON hicon) { DestroyIcon(hicon); } };
+
+typedef SH<HANDLE, NULL, SH_CloseHandle> SHandle;
+typedef SH<HANDLE, DWORD_PTR(INVALID_HANDLE_VALUE), SH_CloseHandle> SFileHandle;
+typedef SH<HANDLE, DWORD_PTR(INVALID_HANDLE_VALUE), SH_FindClose> SFindHandle;
+typedef SH<HKEY, NULL, SH_RegCloseKey> SHKEY;
+typedef SH<HPEN, NULL, SH_DeleteObject> SHPEN;
+typedef SH<HBRUSH, NULL, SH_DeleteObject> SHBRUSH;
+typedef SH<HBITMAP, NULL, SH_DeleteObject> SHBITMAP;
+typedef SH<HFONT, NULL, SH_DeleteObject> SHFONT;
+typedef SH<HCURSOR, NULL, SH_DestroyCursor> SHCURSOR;
+typedef SH<HICON, NULL, SH_DestroyIcon> SHICON;
+

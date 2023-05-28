@@ -45,6 +45,7 @@ public:
     ID2D1SolidColorBrush*   LineBrush() const { return m_spLineBrush; }
     ID2D1SolidColorBrush*   FileLineBrush() const { return m_spFileLineBrush; }
     ID2D1SolidColorBrush*   FillBrush() const { return m_spFillBrush; }
+    ID2D1StrokeStyle*       RoundedStrokeStyle() const { return m_spRoundedStroke; }
 
     ID2D1DeviceContext*     Context() const { return m_spContext; }
     IDWriteTextFormat*      TextFormat() const { return m_spTextFormat; }
@@ -60,6 +61,7 @@ private:
     SPI<ID2D1SolidColorBrush>   m_spLineBrush;
     SPI<ID2D1SolidColorBrush>   m_spFileLineBrush;
     SPI<ID2D1SolidColorBrush>   m_spFillBrush;
+    SPI<ID2D1StrokeStyle>       m_spRoundedStroke;
 
     SPQI<ID2D1DeviceContext>    m_spContext;
     SPI<IDWriteTextFormat>      m_spTextFormat;

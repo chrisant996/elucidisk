@@ -255,6 +255,50 @@ FLOAT MakeAppsIcon(DirectHwndRenderTarget& target, RECT rc, const DpiScaler& dpi
     return stroke; // DrawGeometry when > 0.0f.
 }
 
+FLOAT MakeFolderIcon(DirectHwndRenderTarget& target, RECT rc, const DpiScaler& dpi, ID2D1Geometry** out)
+{
+    FLOAT stroke = 0.0f;
+
+    SPI<ID2D1PathGeometry> spGeometry;
+    if (target.Factory() && SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
+    {
+        const LONG dim = std::min<LONG>(rc.right - rc.left, rc.bottom - rc.top) * 2 / 3;
+        const LONG cx = (dim & ~1) | ((rc.right - rc.left) & 1);
+        const LONG cy = ((dim*4/5) & ~1) | ((rc.bottom - rc.top) & 1);
+        stroke = FLOAT(std::max<LONG>(2, dim / 10));
+        const FLOAT halfstroke = stroke/2;
+        const FLOAT tab = FLOAT(dpi.Scale(3));
+
+        const FLOAT left = FLOAT(rc.left + ((rc.right - rc.left) - cx) / 2);
+        const FLOAT top = FLOAT(rc.top + ((rc.bottom - rc.top) - cy) / 2);
+        D2D1_RECT_F rect = D2D1::RectF(left, top, left + cx, top + cy);
+
+        SPI<ID2D1GeometrySink> spSink;
+        if (SUCCEEDED(spGeometry->Open(&spSink)))
+        {
+            spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+            spSink->BeginFigure(D2D1::Point2F(rect.right - halfstroke, rect.bottom - halfstroke), D2D1_FIGURE_BEGIN_FILLED);
+
+            D2D1_POINT_2F points[] =
+            {
+                D2D1::Point2F(rect.left + halfstroke, rect.bottom - halfstroke),
+                D2D1::Point2F(rect.left + halfstroke, rect.top + halfstroke),
+                D2D1::Point2F(rect.left + halfstroke + cx/3, rect.top + halfstroke),
+                D2D1::Point2F(rect.left + halfstroke + cx/3 + tab, rect.top + halfstroke + tab),
+                D2D1::Point2F(rect.right - halfstroke, rect.top + halfstroke + tab),
+            };
+            spSink->AddLines(points, _countof(points));
+
+            spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            spSink->Close();
+
+            *out = spGeometry.Transfer();
+        }
+    }
+
+    return stroke; // DrawGeometry when > 0.0f.
+}
+
 //----------------------------------------------------------------------------
 // ScannerThread.
 
@@ -631,7 +675,7 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
         if (button.m_spGeometry)
         {
             if (button.m_stroke > 0.0f)
-                target.Target()->DrawGeometry(button.m_spGeometry, target.LineBrush(), button.m_stroke);
+                target.Target()->DrawGeometry(button.m_spGeometry, target.LineBrush(), button.m_stroke, target.RoundedStrokeStyle());
             else
                 target.Target()->FillGeometry(button.m_spGeometry, target.LineBrush());
         }
@@ -1742,6 +1786,16 @@ void MainWindow::OnCommand(WORD id, HWND hwndCtrl, WORD code)
     case IDM_APPWIZ:
         ShellOpen(m_hwnd, TEXT("appwiz.cpl"));
         break;
+    case IDM_FOLDER:
+        {
+            std::wstring path;
+            if (ShellBrowseForFolder(m_hwnd, TEXT("Choose Folder to Scan"), path))
+            {
+                const WCHAR* paths[] = { path.c_str(), nullptr };
+                Scan(_countof(paths) - 1, paths, false/*rescan*/);
+            }
+        }
+        break;
     default:
         if (id >= IDM_DRIVE_FIRST && id <= IDM_DRIVE_LAST)
         {
@@ -1838,11 +1892,8 @@ void MainWindow::OnLayout(RECT* prc)
     rc.top = prc->top + m_top_reserve + m_margin_reserve + m_top_reserve + m_top_reserve + margin;
     rc.right = rc.left + dim;
     rc.bottom = rc.top + dim;
-#if 0
-// TODO: Folder icon.
-    m_buttons.AddButton(IDM_FOLDER, rc, TEXT("..."));
+    m_buttons.AddButton(IDM_FOLDER, rc, nullptr, TEXT("Scan Folder"), MakeFolderIcon);
     OffsetRect(&rc, 0, dim + margin);
-#endif
 
     for (UINT ii = 0; ii < m_drives.size(); ++ii)
     {

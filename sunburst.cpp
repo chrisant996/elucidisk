@@ -296,6 +296,9 @@ LError:
     ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.5f), &m_spFileLineBrush));
     ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spFillBrush));
 
+    const auto rstyle = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND);
+    ERRJMP(m_spFactory->CreateStrokeStyle(rstyle, nullptr, 0, &m_spRoundedStroke));
+
     SPI<IDWriteRenderingParams> spRenderingParams;
     ERRJMP(m_spDWriteFactory->CreateRenderingParams(&spRenderingParams));
 
@@ -359,6 +362,7 @@ void DirectHwndRenderTarget::ReleaseDeviceResources()
     m_spPathTextRenderer.Release();
     m_spRenderingParams.Release();
     m_spTextFormat.Release();
+    m_spRoundedStroke.Release();
     m_spFillBrush.Release();
     m_spFileLineBrush.Release();
     m_spLineBrush.Release();
