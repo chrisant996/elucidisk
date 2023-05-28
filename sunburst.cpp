@@ -284,7 +284,7 @@ LError:
     }
 
     ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spLineBrush));
-    ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.75f), &m_spFileLineBrush));
+    ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.5f), &m_spFileLineBrush));
     ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spFillBrush));
 
     SPI<IDWriteRenderingParams> spRenderingParams;
