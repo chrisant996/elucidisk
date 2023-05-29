@@ -768,6 +768,7 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
 
     if (!g_rainbow)
         return D2D1::ColorF(highlight ? 0x3078F8 : 0x6495ED);
+// TODO: Option to color based on size vs total?
 
     const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
 
