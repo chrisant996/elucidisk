@@ -12,12 +12,12 @@ BEGIN
         MENUITEM "&Open File",              IDM_OPEN_FILE
         MENUITEM "&Open in Explorer",       IDM_OPEN_DIRECTORY
         MENUITEM SEPARATOR
+        MENUITEM "&Hide",                   IDM_HIDE_DIRECTORY
+        MENUITEM "&Show",                   IDM_SHOW_DIRECTORY
+        MENUITEM SEPARATOR
         MENUITEM "Rec&ycle",                IDM_RECYCLE_ENTRY
         MENUITEM "&Delete",                 IDM_DELETE_ENTRY
         MENUITEM "&Empty Recycle Bin",      IDM_EMPTY_RECYCLEBIN
-        MENUITEM SEPARATOR
-        MENUITEM "&Hide",                   IDM_HIDE_DIRECTORY
-        MENUITEM "&Show",                   IDM_SHOW_DIRECTORY
     END
     POPUP ""
     BEGIN
