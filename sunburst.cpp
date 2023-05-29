@@ -1139,7 +1139,7 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
                 for (size_t ii = m_roots.size(); ii--;)
                 {
                     const FLOAT start = m_start_angles[ii];
-                    const FLOAT free = m_free_angles[ii];
+                    const FLOAT free = m_free_angles.empty() ? end : m_free_angles[ii];
 
                     const bool isHighlight = is_highlight(highlight, m_roots[ii]);
 
@@ -1162,14 +1162,17 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
                     end = start;
                 }
 
-                FLOAT prev = -1234.0f;
-                pFillBrush->SetColor(MakeRootColor(false, true));
-                for (size_t ii = m_roots.size(); ii--;)
+                if (m_roots.size() > 1)
                 {
-                    const FLOAT angle = (m_free_angles.empty() ? m_start_angles[ii] : m_free_angles[ii]) + c_rotation;
-                    if (prev != angle)
-                        pTarget->DrawLine(m_center, MakePoint(m_center, mx.center_radius, angle), pFillBrush, mx.stroke);
-                    prev = angle;
+                    FLOAT prev = -1234.0f;
+                    pFillBrush->SetColor(MakeRootColor(false, true));
+                    for (size_t ii = m_roots.size(); ii--;)
+                    {
+                        const FLOAT angle = (m_free_angles.empty() ? m_start_angles[ii] : m_free_angles[ii]) + c_rotation;
+                        if (prev != angle)
+                            pTarget->DrawLine(m_center, MakePoint(m_center, mx.center_radius, angle), pFillBrush, mx.stroke);
+                        prev = angle;
+                    }
                 }
             }
             else
