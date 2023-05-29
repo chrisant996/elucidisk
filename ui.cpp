@@ -1045,7 +1045,10 @@ void MainWindow::Summary()
 
     std::vector<const WCHAR*> args;
     for (const auto& drive : m_drives)
-        args.emplace_back(drive.c_str());
+    {
+        if (!is_subst(drive.c_str()))
+            args.emplace_back(drive.c_str());
+    }
 
     if (!args.empty())
         Scan(int(args.size()), args.data(), false);
@@ -1138,11 +1141,7 @@ void MainWindow::EnumDrives()
 
             const UINT type = GetDriveType(drive);
             if (type == DRIVE_FIXED || type == DRIVE_RAMDISK)
-            {
-                // Skip SUBST drives.
-                if (!is_subst(drive))
-                    m_drives.emplace_back(drive);
-            }
+                m_drives.emplace_back(drive);
         }
     }
 
