@@ -62,6 +62,7 @@ class DirectHwndRenderTarget
         SPI<ID2D1SolidColorBrush>   m_spTextBrush;
 
         SPI<ID2D1StrokeStyle>       m_spRoundedStroke;
+        SPI<ID2D1StrokeStyle>       m_spBevelStroke;
 
         SPI<IDWriteTextFormat>      m_spTextFormat;
         SPI<IDWriteTextFormat>      m_spCenterTextFormat;
@@ -95,6 +96,7 @@ public:
     ID2D1SolidColorBrush*   TextBrush() const { return m_resources->m_spTextBrush; }
 
     ID2D1StrokeStyle*       RoundedStrokeStyle() const { return m_resources->m_spRoundedStroke; }
+    ID2D1StrokeStyle*       BevelStrokeStyle() const { return m_resources->m_spBevelStroke; }
 
     IDWriteTextFormat*      TextFormat() const { return m_resources->m_spTextFormat; }
     FLOAT                   FontSize() const { return m_resources->m_fontSize; }

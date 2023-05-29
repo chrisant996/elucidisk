@@ -279,6 +279,9 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
     const auto rstyle = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND);
     ERRRET(m_spFactory->CreateStrokeStyle(rstyle, nullptr, 0, &m_spRoundedStroke));
 
+    const auto bstyle = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_BEVEL);
+    ERRRET(m_spFactory->CreateStrokeStyle(bstyle, nullptr, 0, &m_spBevelStroke));
+
     SPI<IDWriteRenderingParams> spRenderingParams;
     ERRRET(m_spDWriteFactory->CreateRenderingParams(&spRenderingParams));
 
@@ -1071,7 +1074,7 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
     // Hover highlight.
 
     if (spHighlight && (!highlight->GetParent() || is_root_finished(highlight)))
-        target.Target()->DrawGeometry(spHighlight, target.LineBrush(), mx.stroke * 2.0f);
+        target.Target()->DrawGeometry(spHighlight, target.LineBrush(), mx.stroke * 2.0f, target.BevelStrokeStyle());
 }
 
 void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight, bool files, SPI<ID2D1Geometry>& spHighlight)
