@@ -75,6 +75,7 @@ public:
     virtual std::shared_ptr<RecycleBinNode> GetRecycleBin() const { return nullptr; }
     virtual std::shared_ptr<FreeSpaceNode> GetFreeSpace() const { return nullptr; }
     ULONGLONG               GetSize() const { return m_size; }
+    ULONGLONG               GetEffectiveSize() const;
     void                    Hide(bool hide=true) { m_hide = hide; }
     bool                    IsHidden() const { return m_hide; }
     std::shared_ptr<DirNode> AddDir(const WCHAR* name);
@@ -121,6 +122,7 @@ public:
                             FreeSpaceNode(const WCHAR* name, ULONGLONG free, ULONGLONG total, const std::shared_ptr<DirNode>& parent) : Node(name, parent), m_free(free), m_total(total) {}
     const FreeSpaceNode*    AsFreeSpace() const override { return this; }
     ULONGLONG               GetFreeSize() const { return m_free; }
+    ULONGLONG               GetUsedSize() const { return m_total - m_free; }
     ULONGLONG               GetTotalSize() const { return m_total; }
 private:
     const ULONGLONG         m_free;

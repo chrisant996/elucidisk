@@ -1143,7 +1143,10 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
         bool has_size = true;
 
         if (node->AsDir())
-            size = show_free ? node->AsDir()->GetFreeSpace()->GetFreeSize(): node->AsDir()->GetSize();
+        {
+            std::shared_ptr<FreeSpaceNode> free = node->AsDir()->GetFreeSpace();
+            size = free && show_free ? free->GetFreeSize() : node->AsDir()->GetEffectiveSize();
+        }
         else if (node->AsFile())
             size = node->AsFile()->GetSize();
         else if (node->AsFreeSpace())
@@ -1359,7 +1362,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
                 ULONGLONG used = 0;
                 for (const auto root : m_roots)
-                    used += root->GetSize();
+                    used += root->GetEffectiveSize();
 
                 std::wstring text;
                 std::wstring units;

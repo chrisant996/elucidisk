@@ -128,6 +128,14 @@ std::vector<std::shared_ptr<FileNode>> DirNode::CopyFiles() const
     return m_files;
 }
 
+ULONGLONG DirNode::GetEffectiveSize() const
+{
+    if (!GetFreeSpace())
+        return GetSize();
+    else
+        return std::max<ULONGLONG>(GetFreeSpace()->GetUsedSize(), GetSize());
+}
+
 std::shared_ptr<DirNode> DirNode::AddDir(const WCHAR* name)
 {
     std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));

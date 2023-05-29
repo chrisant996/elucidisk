@@ -533,7 +533,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
             if (free)
             {
                 totals.emplace_back(double(free->GetTotalSize()));
-                used.emplace_back(double(free->GetTotalSize() - free->GetFreeSize()));
+                used.emplace_back(double(free->GetUsedSize()));
                 if (size == 0.0f || used.back() == 0.0f)
                     scale.emplace_back(0.0f);
                 else if (dir->IsFinished())
