@@ -38,7 +38,7 @@ int PASCAL WinMain(
 
     // Options (there are no options yet).
 
-// TODO: An option to generate the .ico file programmatically using D2D.
+    // FUTURE: An option to generate the .ico file programmatically using D2D.
 
     // Create UI.
 
