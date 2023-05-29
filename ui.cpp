@@ -622,7 +622,6 @@ public:
     void                    AddButton(UINT id, const RECT& rect, const WCHAR* caption=nullptr, const WCHAR* desc=nullptr, MakeButtonIconFn* make_icon=nullptr);
     void                    ShowButton(UINT id, bool show);
     void                    RenderButtons(DirectHwndRenderTarget& target);
-    void                    RenderCaptions(HDC hdc);
     const WCHAR*            GetHoverDescription();
     void                    OnMouseMessage(UINT msg, const POINT* pt);
     void                    OnCancelMode();
@@ -719,27 +718,9 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
             else
                 target.Target()->FillGeometry(button.m_spGeometry, target.LineBrush());
         }
-    }
-}
 
-void Buttons::RenderCaptions(HDC hdc)
-{
-    SetBkMode(hdc, TRANSPARENT);
-
-    for (size_t ii = 0; ii < m_buttons.size(); ++ii)
-    {
-        if (m_buttons[ii].m_hidden)
-            continue;
-
-        const RECT& rect = m_buttons[ii].m_rect;
-        const std::wstring& caption = m_buttons[ii].m_caption;
-
-        SIZE size;
-        GetTextExtentPoint32(hdc, caption.c_str(), int(caption.length()), &size);
-
-        const LONG xx = rect.left + (rect.right - rect.left - size.cx) / 2;
-        const LONG yy = rect.top + (rect.bottom - rect.top - size.cy) / 2;
-        ExtTextOut(hdc, xx, yy, 0, &rect, caption.c_str(), int(caption.length()), nullptr);
+        if (!button.m_caption.empty())
+            target.WriteText(target.TextFormat(), 0.0f, 0.0f, rectF, button.m_caption.c_str(), button.m_caption.length(), WTO_CENTER);
     }
 }
 
@@ -866,7 +847,6 @@ private:
     HWND                    m_hwnd = 0;
     const HINSTANCE         m_hinst;
     HFONT                   m_hfont = 0;
-    HFONT                   m_hfontCenter = 0;
     DpiScaler               m_dpi;
     LONG                    m_top_reserve = 0;
     LONG                    m_margin_reserve = 0;
@@ -1343,8 +1323,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 const FLOAT height = rtSize.height - (m_margin_reserve + m_top_reserve);
 
                 const FLOAT extent = std::min<FLOAT>(width, height);
-                const FLOAT xx = (rtSize.width - extent) / 2;
-                const FLOAT yy = m_margin_reserve + m_top_reserve + (height - extent) / 2;
+                FLOAT xx = (rtSize.width - extent) / 2;
+                FLOAT yy = m_margin_reserve + m_top_reserve + (height - extent) / 2;
                 const D2D1_RECT_F bounds = D2D1::RectF(xx, yy, xx + extent, yy + extent);
 
                 static size_t s_gen = 0;
@@ -1375,6 +1355,51 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
                 m_buttons.RenderButtons(m_directRender);
 
+                {
+                    ULONGLONG used = 0;
+                    for (const auto root : m_roots)
+                        used += root->GetEffectiveSize();
+
+                    std::wstring text;
+                    std::wstring units;
+                    m_sunburst.FormatSize(used, text, units);
+                    text.append(TEXT(" "));
+                    text.append(units);
+
+                    std::wstring text2;
+                    if (m_roots.size() > 1)
+                    {
+                        text2 = TEXT("Total");
+                    }
+                    else if (m_roots.size() == 1)
+                    {
+                        for (const auto& drive : m_drives)
+                        {
+                            if (wcsnicmp(drive.c_str(), m_roots[0]->GetName(), drive.length()) == 0)
+                            {
+                                text2 = drive;
+                                break;
+                            }
+                        }
+                    }
+
+                    D2D1_SIZE_F size;
+                    SPI<IDWriteTextLayout> spLayout;
+                    if (m_directRender.MeasureText(m_directRender.CenterTextFormat(), bounds, text.c_str(), text.length(), size, spLayout.UnsafeAddress()))
+                    {
+                        xx = FLOAT(floor(bounds.left + (bounds.right - bounds.left - size.width) / 2));
+                        yy = FLOAT(floor(bounds.top + (bounds.bottom - bounds.top - size.height) / 2));
+                        m_directRender.WriteText(m_directRender.CenterTextFormat(), xx, yy, bounds, text.c_str(), text.length(), WTO_NONE, spLayout);
+
+                        if (!text2.empty() && m_directRender.MeasureText(m_directRender.TextFormat(), bounds, text2.c_str(), text2.length(), size, spLayout.UnsafeAddress()))
+                        {
+                            xx = FLOAT(floor(bounds.left + (bounds.right - bounds.left - size.width) / 2));
+                            yy -= size.height;
+                            m_directRender.WriteText(m_directRender.TextFormat(), xx, yy, bounds, text.c_str(), text.length(), WTO_NONE, spLayout);
+                        }
+                    }
+                }
+
                 if (FAILED(pTarget->EndDraw()))
                     m_directRender.ReleaseDeviceResources();
 
@@ -1383,13 +1408,14 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
             // GDI painting.
 
-// TODO: Convert to use D2D; will resolve the flicker.
             if (m_hfont)
             {
                 SetBkMode(ps.hdc, TRANSPARENT);
 
+// TODO: Draw node info using D2D.
                 DrawNodeInfo(ps.hdc, rcClient, m_hover_node, m_hover_free);
 
+// TODO: Draw app info using D2D.
                 {
                     WCHAR sz[100];
                     SIZE size;
@@ -1446,54 +1472,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
 #endif
                 }
-
-                SelectFont(ps.hdc, m_hfontCenter);
-
-                ULONGLONG used = 0;
-                for (const auto root : m_roots)
-                    used += root->GetEffectiveSize();
-
-                std::wstring text;
-                std::wstring units;
-                m_sunburst.FormatSize(used, text, units);
-                text.append(TEXT(" "));
-                text.append(units);
-
-                SIZE size;
-                GetTextExtentPoint32(ps.hdc, text.c_str(), int(text.length()), &size);
-
-                rcClient.top += m_margin_reserve + m_top_reserve;
-                LONG xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
-                LONG yy = rcClient.top + ((rcClient.bottom - rcClient.top) - size.cy) / 2;
-                ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
-
-                SelectFont(ps.hdc, m_hfont);
-
-                text.clear();
-                if (m_roots.size() > 1)
-                {
-                    text = TEXT("Total");
-                }
-                else if (m_roots.size() == 1)
-                {
-                    for (const auto& drive : m_drives)
-                    {
-                        if (wcsnicmp(drive.c_str(), m_roots[0]->GetName(), drive.length()) == 0)
-                        {
-                            text = drive;
-                            break;
-                        }
-                    }
-                }
-                if (!text.empty())
-                {
-                    GetTextExtentPoint32(ps.hdc, text.c_str(), int(text.length()), &size);
-                    yy -= size.cy;
-                    xx = rcClient.left + ((rcClient.right - rcClient.left) - size.cx) / 2;
-                    ExtTextOut(ps.hdc, xx, yy, 0, &rcClient, text.c_str(), int(text.length()), 0);
-                }
-
-                m_buttons.RenderCaptions(ps.hdc);
             }
 
             RestoreDC(ps.hdc, -1);
@@ -1923,11 +1901,8 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
 
     if (m_hfont)
         DeleteFont(m_hfont);
-    if (m_hfontCenter)
-        DeleteFont(m_hfontCenter);
 
     m_hfont = MakeFont(dpi, 10);
-    m_hfontCenter = MakeFont(dpi, 12, FW_BOLD);
 
     {
         SIZE size;
@@ -2021,11 +1996,6 @@ LRESULT MainWindow::OnDestroy()
     {
         DeleteFont(m_hfont);
         m_hfont = 0;
-    }
-    if (m_hfontCenter)
-    {
-        DeleteFont(m_hfontCenter);
-        m_hfontCenter = 0;
     }
     return 0;
 }

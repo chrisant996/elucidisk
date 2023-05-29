@@ -22,7 +22,9 @@ constexpr int c_centerRadiusMin = 50;
 #endif
 constexpr FLOAT c_rotation = -90.0f;
 
-constexpr WCHAR c_arcfontface[] = TEXT("Segoe UI");
+constexpr WCHAR c_fontface[] = TEXT("Segoe UI");
+constexpr FLOAT c_fontsize = 10.0f;
+constexpr FLOAT c_centerfontsize = 12.0f;
 constexpr FLOAT c_arcfontsize = 8.0f;
 
 #ifdef USE_MIN_ARC_LENGTH
@@ -315,22 +317,44 @@ LError:
             spRenderingParams->GetEnhancedContrast(),
             spRenderingParams->GetClearTypeLevel(),
             spRenderingParams->GetPixelGeometry(),
-            DWRITE_RENDERING_MODE_OUTLINE,
+            DWRITE_RENDERING_MODE_NATURAL,
             &m_spRenderingParams));
+
+    m_fontSize = FLOAT(-dpi.PointSizeToHeight(c_fontsize));
+    ERRJMP(m_spDWriteFactory->CreateTextFormat(
+            c_fontface,
+            nullptr,
+            DWRITE_FONT_WEIGHT_REGULAR,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            m_fontSize,
+            TEXT("en-US"),
+            &m_spTextFormat));
+
+    m_centerFontSize = FLOAT(-dpi.PointSizeToHeight(c_centerfontsize));
+    ERRJMP(m_spDWriteFactory->CreateTextFormat(
+            c_fontface,
+            nullptr,
+            DWRITE_FONT_WEIGHT_BOLD,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            m_centerFontSize,
+            TEXT("en-US"),
+            &m_spCenterTextFormat));
 
     m_arcFontSize = FLOAT(-dpi.PointSizeToHeight(c_arcfontsize));
     ERRJMP(m_spDWriteFactory->CreateTextFormat(
-            c_arcfontface,
+            c_fontface,
             nullptr,
             DWRITE_FONT_WEIGHT_REGULAR,
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
             m_arcFontSize,
             TEXT("en-US"),
-            &m_spTextFormat));
+            &m_spArcTextFormat));
 
     ERRJMP(m_spContext.HrQuery(m_spTarget));
-    m_spContext->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+    m_spContext->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
     m_spContext->SetTextRenderingParams(m_spRenderingParams);
 
     m_spPathTextRenderer = new PathTextRenderer(dpi.ScaleF(96));
@@ -361,6 +385,8 @@ void DirectHwndRenderTarget::ReleaseDeviceResources()
 {
     m_spPathTextRenderer.Release();
     m_spRenderingParams.Release();
+    m_spArcTextFormat.Release();
+    m_spCenterTextFormat.Release();
     m_spTextFormat.Release();
     m_spRoundedStroke.Release();
     m_spFillBrush.Release();
@@ -371,6 +397,55 @@ void DirectHwndRenderTarget::ReleaseDeviceResources()
     m_spDWriteFactory.Release();
     m_spFactory.Release();
     m_hwnd = 0;
+}
+
+bool DirectHwndRenderTarget::MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout)
+{
+    const FLOAT xExtent = rect.right - rect.left;
+    const FLOAT yExtent = rect.bottom - rect.top;
+
+    SPI<IDWriteTextLayout> spTextLayout;
+    if (FAILED(DWriteFactory()->CreateTextLayout(text, UINT32(len), format, xExtent, yExtent, &spTextLayout)))
+        return false;
+
+    DWRITE_TEXT_METRICS textMetrics;
+    if (FAILED(spTextLayout->GetMetrics(&textMetrics)))
+        return false;
+
+    size = D2D1::SizeF(FLOAT(ceil(textMetrics.width)), FLOAT(ceil(textMetrics.height)));
+    if (ppLayout)
+        *ppLayout = spTextLayout.Transfer();
+    return true;
+}
+
+bool DirectHwndRenderTarget::WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT y, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, WriteTextOptions options, IDWriteTextLayout* pLayout)
+{
+    const FLOAT xExtent = rect.right - rect.left;
+    const FLOAT yExtent = rect.bottom - rect.top;
+
+    SPI<IDWriteTextLayout> _spTextLayout;
+    if (!pLayout)
+    {
+        if (FAILED(DWriteFactory()->CreateTextLayout(text, UINT32(len), format, xExtent, yExtent, &_spTextLayout)))
+            return false;
+        pLayout = _spTextLayout;
+    }
+
+    if (options & WTO_CENTER)
+    {
+        DWRITE_TEXT_METRICS textMetrics;
+        if (FAILED(pLayout->GetMetrics(&textMetrics)))
+            return false;
+
+// TODO: Path ellipsis; probably using a custom renderer is most efficient for
+// finding whether/where to inject an ellipsis, and how much text to discard.
+        const auto size = D2D1::SizeF(FLOAT(ceil(textMetrics.width)), FLOAT(ceil(textMetrics.height)));
+        x = FLOAT(floor(rect.left + (xExtent - size.width) / 2));
+        y = FLOAT(floor(rect.top + (yExtent - size.height) / 2));
+    }
+
+    Target()->DrawTextLayout(D2D1::Point2F(x, y), pLayout, LineBrush(), D2D1_DRAW_TEXT_OPTIONS_NONE);
+    return true;
 }
 
 //----------------------------------------------------------------------------
@@ -468,8 +543,8 @@ bool Sunburst::SetBounds(const D2D1_RECT_F& rect)
     const bool changed = !!memcmp(&m_bounds, &rect, sizeof(rect));
 
     m_bounds = rect;
-    m_center.x = floor((rect.left + rect.right) / 2.0f) + 0.5f;
-    m_center.y = floor((rect.top + rect.bottom) / 2.0f) + 0.5f;
+    m_center.x = floor((rect.left + rect.right) / 2.0f);
+    m_center.y = floor((rect.top + rect.bottom) / 2.0f);
 
     return changed;
 }
@@ -908,7 +983,7 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
     text.append(TEXT(" "));
 
     SPI<IDWriteTextLayout> spTextLayout;
-    if (FAILED(pFactory->CreateTextLayout(text.c_str(), UINT32(text.length()), target.TextFormat(), 1000.0f, 50.0f, &spTextLayout)))
+    if (FAILED(pFactory->CreateTextLayout(text.c_str(), UINT32(text.length()), target.ArcTextFormat(), m_bounds.right - m_bounds.left, m_bounds.bottom - m_bounds.top, &spTextLayout)))
         return;
 
     const FLOAT start = arc.m_start + c_rotation;
@@ -943,8 +1018,8 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
         context.geometry.Set(spGeometry);
         context.d2DContext.Set(target.Context());
 
-        if (target.TextRenderer()->TestFit(&context, spTextLayout))
-            spTextLayout->Draw(&context, target.TextRenderer(), 0, 0);
+        if (target.ArcTextRenderer()->TestFit(&context, spTextLayout))
+            spTextLayout->Draw(&context, target.ArcTextRenderer(), 0, 0);
     }
 }
 
@@ -1100,14 +1175,14 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
         if (thickness <= 0.0f)
             break;
 
-        if (thickness < target.FontSize() + m_dpi.Scale(4))
+        if (thickness < target.ArcFontSize() + m_dpi.Scale(4))
             show_names = false;
 
         const FLOAT outer_radius = inner_radius + thickness;
         if (outer_radius > mx.max_radius)
             break;
 
-        const FLOAT arctext_radius = outer_radius - target.FontSize();
+        const FLOAT arctext_radius = outer_radius - target.ArcFontSize();
 
         for (const auto arc : m_rings[depth])
         {
