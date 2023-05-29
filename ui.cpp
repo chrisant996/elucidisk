@@ -718,6 +718,7 @@ void Buttons::OnMouseMessage(UINT msg, const POINT* pt)
         SetHover(hover, m_pressed);
         break;
     case WM_LBUTTONDOWN:
+    case WM_LBUTTONDBLCLK:
         SetHover(hover, hover);
         break;
     case WM_LBUTTONUP:
