@@ -686,6 +686,10 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
                     const float angle = float((sweep - free->GetFreeSize()) * 360 / grand_total);
                     m_free_angles.emplace_back(angle);
                 }
+                else
+                {
+                    m_free_angles.emplace_back(end);
+                }
             }
         }
     }
@@ -1127,19 +1131,17 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
         SPI<ID2D1EllipseGeometry> spCircle;
         if (SUCCEEDED(target.Factory()->CreateEllipseGeometry(ellipse, &spCircle)))
         {
-            if (m_roots.size() &&
-                (m_roots.size() > 1 || m_roots[0]->GetFreeSpace()) &&
-                m_start_angles.size() == m_roots.size())
-            {
-                assert(m_free_angles.empty() || m_free_angles.size() == m_roots.size());
+            assert(m_free_angles.empty() || m_free_angles.size() == m_roots.size());
 
+            if (m_roots.size() > 1 || (m_roots.size() == 1 && m_roots[0]->GetFreeSpace()))
+            {
                 FLOAT end = m_start_angles[0];
                 for (size_t ii = m_roots.size(); ii--;)
                 {
                     const FLOAT start = m_start_angles[ii];
-                    const FLOAT free = m_free_angles.empty() ? end : m_free_angles[ii];
+                    const FLOAT free = m_free_angles[ii];
 
-                    const bool isHighlight = (highlight == m_roots[ii]);
+                    const bool isHighlight = is_highlight(highlight, m_roots[ii]);
 
                     SPI<ID2D1Geometry> spGeometry;
                     if (SUCCEEDED(MakeArcGeometry(target, start, free, 0.0f, mx.center_radius, &spGeometry)))
@@ -1148,7 +1150,9 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
                         pTarget->FillGeometry(spGeometry, pFillBrush);
                         spGeometry.Release();
                     }
-                    if (g_show_free_space && SUCCEEDED(MakeArcGeometry(target, free, end, 0.0f, mx.center_radius, &spGeometry)))
+                    if (g_show_free_space &&
+                        (free != end) &&
+                        SUCCEEDED(MakeArcGeometry(target, free, end, 0.0f, mx.center_radius, &spGeometry)))
                     {
                         pFillBrush->SetColor(MakeRootColor(isHighlight, true));
                         pTarget->FillGeometry(spGeometry, pFillBrush);
@@ -1158,6 +1162,15 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
                     end = start;
                 }
 
+                FLOAT prev = -1234.0f;
+                pFillBrush->SetColor(MakeRootColor(false, true));
+                for (size_t ii = m_roots.size(); ii--;)
+                {
+                    const FLOAT angle = (m_free_angles.empty() ? m_start_angles[ii] : m_free_angles[ii]) + c_rotation;
+                    if (prev != angle)
+                        pTarget->DrawLine(m_center, MakePoint(m_center, mx.center_radius, angle), pFillBrush, mx.stroke);
+                    prev = angle;
+                }
             }
             else
             {
@@ -1167,19 +1180,6 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
             }
 
             pTarget->DrawGeometry(spCircle, pLineBrush, mx.stroke);
-
-            if (!g_show_free_space && m_roots.size() > 1)
-            {
-                FLOAT prev = -1234.0f;
-                pFillBrush->SetColor(MakeRootColor(false, true));
-                for (size_t ii = m_roots.size(); ii--;)
-                {
-                    const FLOAT start = m_start_angles[ii] + c_rotation;
-                    if (prev != start)
-                        pTarget->DrawLine(m_center, MakePoint(m_center, mx.center_radius, start), pFillBrush, mx.stroke);
-                    prev = start;
-                }
-            }
         }
 
         if (highlight)
