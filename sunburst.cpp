@@ -255,9 +255,94 @@ void HSLColorType::AdjustLuminance(FLOAT delta)
 // DirectHwndRenderTarget.
 
 #define ERRJMP(expr)      do { hr = (expr); assert(SUCCEEDED(hr)); if (FAILED(hr)) goto LError; } while (false)
+#define ERRRET(expr)      do { hr = (expr); assert(SUCCEEDED(hr)); if (FAILED(hr)) return hr; } while (false)
+
+HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& size, const DpiScaler& dpi)
+{
+    HRESULT hr = S_OK;
+
+    if (!m_spFactory && !GetD2DFactory(&m_spFactory))
+        return E_UNEXPECTED;
+    if (!m_spDWriteFactory && !GetDWriteFactory(&m_spDWriteFactory))
+        return E_UNEXPECTED;
+
+    ERRRET(m_spFactory->CreateHwndRenderTarget(
+        D2D1::RenderTargetProperties(),
+        D2D1::HwndRenderTargetProperties(hwnd, size),
+        &m_spTarget));
+
+    ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spLineBrush));
+    ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.5f), &m_spFileLineBrush));
+    ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spFillBrush));
+    ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spTextBrush));
+
+    const auto rstyle = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND);
+    ERRRET(m_spFactory->CreateStrokeStyle(rstyle, nullptr, 0, &m_spRoundedStroke));
+
+    SPI<IDWriteRenderingParams> spRenderingParams;
+    ERRRET(m_spDWriteFactory->CreateRenderingParams(&spRenderingParams));
+
+    // Custom text rendering param object is created that uses all default
+    // values except for the rendering mode which is now set to outline.  The
+    // outline mode is much faster in this case as every time text is relaid
+    // out on the path, it is rasterized as geometry.  This saves the extra
+    // step of trying to find the text bitmaps in the font cache and then
+    // repopulating the cache with the new ones.  Since the text may rotate
+    // differently from frame to frame, new glyph bitmaps would be generated
+    // often anyway.
+    ERRRET(m_spDWriteFactory->CreateCustomRenderingParams(
+            spRenderingParams->GetGamma(),
+            spRenderingParams->GetEnhancedContrast(),
+            spRenderingParams->GetClearTypeLevel(),
+            spRenderingParams->GetPixelGeometry(),
+            DWRITE_RENDERING_MODE_NATURAL,
+            &m_spRenderingParams));
+
+    m_fontSize = FLOAT(-dpi.PointSizeToHeight(c_fontsize));
+    ERRRET(m_spDWriteFactory->CreateTextFormat(
+            c_fontface,
+            nullptr,
+            DWRITE_FONT_WEIGHT_REGULAR,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            m_fontSize,
+            TEXT("en-US"),
+            &m_spTextFormat));
+
+    m_centerFontSize = FLOAT(-dpi.PointSizeToHeight(c_centerfontsize));
+    ERRRET(m_spDWriteFactory->CreateTextFormat(
+            c_fontface,
+            nullptr,
+            DWRITE_FONT_WEIGHT_BOLD,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            m_centerFontSize,
+            TEXT("en-US"),
+            &m_spCenterTextFormat));
+
+    m_arcFontSize = FLOAT(-dpi.PointSizeToHeight(c_arcfontsize));
+    ERRRET(m_spDWriteFactory->CreateTextFormat(
+            c_fontface,
+            nullptr,
+            DWRITE_FONT_WEIGHT_REGULAR,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            m_arcFontSize,
+            TEXT("en-US"),
+            &m_spArcTextFormat));
+
+    ERRRET(m_spContext.HrQuery(m_spTarget));
+    m_spContext->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
+    m_spContext->SetTextRenderingParams(m_spRenderingParams);
+
+    m_spPathTextRenderer = new PathTextRenderer(dpi.ScaleF(96));
+
+    return S_OK;
+}
 
 DirectHwndRenderTarget::DirectHwndRenderTarget()
 {
+    m_resources = std::make_unique<Resources>();
 }
 
 DirectHwndRenderTarget::~DirectHwndRenderTarget()
@@ -269,109 +354,38 @@ HRESULT DirectHwndRenderTarget::CreateDeviceResources(const HWND hwnd, const Dpi
 {
     assert(!m_hwnd || hwnd == m_hwnd);
 
-    if (hwnd == m_hwnd && m_spTarget)
+    if (hwnd == m_hwnd && Target())
         return S_OK;
-    if (!m_spFactory && !GetD2DFactory(&m_spFactory))
-        return E_UNEXPECTED;
-    if (!m_spDWriteFactory && !GetDWriteFactory(&m_spDWriteFactory))
-        return E_UNEXPECTED;
+
+    m_resources.reset();
+    m_resources = std::make_unique<Resources>();
 
     m_hwnd = hwnd;
-    m_spTarget.Release();
 
     RECT rc;
     GetClientRect(m_hwnd, &rc);
-    D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
+    const D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
 
-    HRESULT hr = m_spFactory->CreateHwndRenderTarget(
-        D2D1::RenderTargetProperties(),
-        D2D1::HwndRenderTargetProperties(m_hwnd, size),
-        &m_spTarget);
+    HRESULT hr = m_resources->Init(m_hwnd, size, dpi);
     if (FAILED(hr))
     {
-LError:
         ReleaseDeviceResources();
         return hr;
     }
-
-    ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spLineBrush));
-    ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.5f), &m_spFileLineBrush));
-    ERRJMP(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spFillBrush));
-
-    const auto rstyle = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND);
-    ERRJMP(m_spFactory->CreateStrokeStyle(rstyle, nullptr, 0, &m_spRoundedStroke));
-
-    SPI<IDWriteRenderingParams> spRenderingParams;
-    ERRJMP(m_spDWriteFactory->CreateRenderingParams(&spRenderingParams));
-
-    // Custom text rendering param object is created that uses all default
-    // values except for the rendering mode which is now set to outline.  The
-    // outline mode is much faster in this case as every time text is relaid
-    // out on the path, it is rasterized as geometry.  This saves the extra
-    // step of trying to find the text bitmaps in the font cache and then
-    // repopulating the cache with the new ones.  Since the text may rotate
-    // differently from frame to frame, new glyph bitmaps would be generated
-    // often anyway.
-    ERRJMP(m_spDWriteFactory->CreateCustomRenderingParams(
-            spRenderingParams->GetGamma(),
-            spRenderingParams->GetEnhancedContrast(),
-            spRenderingParams->GetClearTypeLevel(),
-            spRenderingParams->GetPixelGeometry(),
-            DWRITE_RENDERING_MODE_NATURAL,
-            &m_spRenderingParams));
-
-    m_fontSize = FLOAT(-dpi.PointSizeToHeight(c_fontsize));
-    ERRJMP(m_spDWriteFactory->CreateTextFormat(
-            c_fontface,
-            nullptr,
-            DWRITE_FONT_WEIGHT_REGULAR,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            m_fontSize,
-            TEXT("en-US"),
-            &m_spTextFormat));
-
-    m_centerFontSize = FLOAT(-dpi.PointSizeToHeight(c_centerfontsize));
-    ERRJMP(m_spDWriteFactory->CreateTextFormat(
-            c_fontface,
-            nullptr,
-            DWRITE_FONT_WEIGHT_BOLD,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            m_centerFontSize,
-            TEXT("en-US"),
-            &m_spCenterTextFormat));
-
-    m_arcFontSize = FLOAT(-dpi.PointSizeToHeight(c_arcfontsize));
-    ERRJMP(m_spDWriteFactory->CreateTextFormat(
-            c_fontface,
-            nullptr,
-            DWRITE_FONT_WEIGHT_REGULAR,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            m_arcFontSize,
-            TEXT("en-US"),
-            &m_spArcTextFormat));
-
-    ERRJMP(m_spContext.HrQuery(m_spTarget));
-    m_spContext->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
-    m_spContext->SetTextRenderingParams(m_spRenderingParams);
-
-    m_spPathTextRenderer = new PathTextRenderer(dpi.ScaleF(96));
 
     return S_OK;
 }
 
 HRESULT DirectHwndRenderTarget::ResizeDeviceResources()
 {
-    if (!m_hwnd || !m_spTarget)
+    if (!m_hwnd || !Target())
         return S_OK;
 
     RECT rc;
     GetClientRect(m_hwnd, &rc);
     D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
 
-    HRESULT hr = m_spTarget->Resize(size);
+    HRESULT hr = m_resources->m_spTarget->Resize(size);
     if (FAILED(hr))
     {
         ReleaseDeviceResources();
@@ -383,20 +397,13 @@ HRESULT DirectHwndRenderTarget::ResizeDeviceResources()
 
 void DirectHwndRenderTarget::ReleaseDeviceResources()
 {
-    m_spPathTextRenderer.Release();
-    m_spRenderingParams.Release();
-    m_spArcTextFormat.Release();
-    m_spCenterTextFormat.Release();
-    m_spTextFormat.Release();
-    m_spRoundedStroke.Release();
-    m_spFillBrush.Release();
-    m_spFileLineBrush.Release();
-    m_spLineBrush.Release();
-    m_spContext.Release();
-    m_spTarget.Release();
-    m_spDWriteFactory.Release();
-    m_spFactory.Release();
+    m_resources = std::make_unique<Resources>();
     m_hwnd = 0;
+}
+
+bool DirectHwndRenderTarget::MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const std::wstring& text, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout)
+{
+    return MeasureText(format, rect, text.c_str(), text.length(), size, ppLayout);
 }
 
 bool DirectHwndRenderTarget::MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout)
@@ -418,6 +425,11 @@ bool DirectHwndRenderTarget::MeasureText(IDWriteTextFormat* format, const D2D1_R
     return true;
 }
 
+bool DirectHwndRenderTarget::WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT y, const D2D1_RECT_F& rect, const std::wstring& text, WriteTextOptions options, IDWriteTextLayout* pLayout)
+{
+    return WriteText(format, x, y, rect, text.c_str(), text.length(), options, pLayout);
+}
+
 bool DirectHwndRenderTarget::WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT y, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, WriteTextOptions options, IDWriteTextLayout* pLayout)
 {
     const FLOAT xExtent = rect.right - rect.left;
@@ -431,7 +443,7 @@ bool DirectHwndRenderTarget::WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT
         pLayout = _spTextLayout;
     }
 
-    if (options & WTO_CENTER)
+    if (options & (WTO_HCENTER|WTO_VCENTER|WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS))
     {
         DWRITE_TEXT_METRICS textMetrics;
         if (FAILED(pLayout->GetMetrics(&textMetrics)))
@@ -440,11 +452,34 @@ bool DirectHwndRenderTarget::WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT
 // TODO: Path ellipsis; probably using a custom renderer is most efficient for
 // finding whether/where to inject an ellipsis, and how much text to discard.
         const auto size = D2D1::SizeF(FLOAT(ceil(textMetrics.width)), FLOAT(ceil(textMetrics.height)));
-        x = FLOAT(floor(rect.left + (xExtent - size.width) / 2));
-        y = FLOAT(floor(rect.top + (yExtent - size.height) / 2));
+        if (options & WTO_HCENTER)
+            x = std::max<FLOAT>(0.0f, FLOAT(floor(rect.left + (xExtent - size.width) / 2)));
+        if (options & WTO_VCENTER)
+            y = FLOAT(floor(rect.top + (yExtent - size.height) / 2));
+        if (options & WTO_RIGHT_ALIGN)
+            x = rect.right - size.width;
+        if (options & WTO_BOTTOM_ALIGN)
+            y = rect.bottom - size.height;
+
+        if (options & WTO_REMEMBER_METRICS)
+            m_resources->m_lastTextSize = size;
     }
 
-    Target()->DrawTextLayout(D2D1::Point2F(x, y), pLayout, LineBrush(), D2D1_DRAW_TEXT_OPTIONS_NONE);
+    const auto position = D2D1::Point2F(x, y);
+    if (options & WTO_REMEMBER_METRICS)
+        m_resources->m_lastTextPosition = position;
+
+    D2D1_DRAW_TEXT_OPTIONS opt = D2D1_DRAW_TEXT_OPTIONS_NONE;
+    if (options & WTO_CLIP)
+        opt |= D2D1_DRAW_TEXT_OPTIONS_CLIP;
+
+    if (options & WTO_UNDERLINE)
+    {
+        DWRITE_TEXT_RANGE range = { 0, UINT32(len) };
+        pLayout->SetUnderline(true, range);
+    }
+
+    Target()->DrawTextLayout(position, pLayout, TextBrush(), opt);
     return true;
 }
 

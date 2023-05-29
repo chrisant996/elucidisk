@@ -720,7 +720,7 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
         }
 
         if (!button.m_caption.empty())
-            target.WriteText(target.TextFormat(), 0.0f, 0.0f, rectF, button.m_caption.c_str(), button.m_caption.length(), WTO_CENTER);
+            target.WriteText(target.TextFormat(), 0.0f, 0.0f, rectF, button.m_caption, WTO_HCENTER|WTO_VCENTER);
     }
 }
 
@@ -828,7 +828,8 @@ protected:
     LRESULT                 OnDestroy();
     LRESULT                 OnNcDestroy();
 
-    void                    DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node, bool free_space);
+    void                    DrawNodeInfo(DirectHwndRenderTarget& target, D2D1_RECT_F rect, const std::shared_ptr<Node>& node, bool free_space);
+    void                    DrawAppInfo(DirectHwndRenderTarget& target, D2D1_RECT_F rect);
 
     void                    Expand(const std::shared_ptr<Node>& node);
     void                    Up();
@@ -1137,25 +1138,15 @@ void MainWindow::EnumDrives()
     }
 }
 
-void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Node>& node, const bool is_free)
+void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const std::shared_ptr<Node>& node, const bool is_free)
 {
-    TEXTMETRIC tm;
-    RECT rcLine = rc;
+    // Determine top line text.
+
+    bool bold = false;
+    bool show_free = false;
+    const WCHAR* desc = m_buttons.GetHoverDescription();
     std::wstring text;
 
-    if (!m_hfont)
-        return;
-
-    SelectFont(hdc, m_hfont);
-    GetTextMetrics(hdc, &tm);
-
-    const int padding = m_dpi.Scale(4);
-    bool show_free = false;
-
-    InflateRect(&rcLine, -padding, 0);
-    rcLine.bottom = rcLine.top + tm.tmHeight;
-
-    const WCHAR* desc = m_buttons.GetHoverDescription();
     if (desc)
     {
         text = desc;
@@ -1182,7 +1173,12 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
                 text.append(ii ? TEXT(" , ") : TEXT("Scan of "));
                 m_roots[ii]->GetFullPath(path);
                 text.append(path);
+                bold = true;
             }
+        }
+        else
+        {
+            text = TEXT("There's nothing to scan.");
         }
     }
     else
@@ -1196,63 +1192,138 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
             text.append(path);
         }
     }
-    DrawText(hdc, text.c_str(), int(text.length()), &rcLine, DT_LEFT|DT_NOPREFIX|DT_PATH_ELLIPSIS|DT_SINGLELINE|DT_TOP);
+
+    // Write top line text.
+
+    const int padding = m_dpi.Scale(4);
+
+    rect.left += padding;
+    rect.right -= padding;
+    rect.top += padding;
+    rect.bottom -= padding;
+
+    D2D1_SIZE_F size;
+    D2D1_RECT_F rectLine = rect;
+
+    SPI<IDWriteTextLayout> spTextLayout;
+    IDWriteTextFormat* pTextFormat = bold ? t.CenterTextFormat() : t.TextFormat();
+    if (t.MeasureText(pTextFormat, rectLine, text.c_str(), text.length(), size, &spTextLayout))
+    {
+        WriteTextOptions options = bold ? WTO_HCENTER|WTO_PATH_ELLIPSIS : WTO_NONE|WTO_PATH_ELLIPSIS;
+        t.WriteText(pTextFormat, rectLine.left, rectLine.top, rectLine, text, options);
+    }
+
+    rectLine.top += (bold ? t.CenterFontSize() : t.FontSize()) + padding;
+
+    // Write node details.
 
     if (!desc && node)
     {
-        OffsetRect(&rcLine, 0, tm.tmHeight + padding);
-        rcLine.right = rcLine.left + m_dpi.Scale(100);
-
-        std::wstring text;
         std::wstring units;
-        SIZE textSize;
-        ULONGLONG size = 0;
-        bool has_size = true;
+        ULONGLONG bytes = 0;
+        bool has_bytes = true;
+        D2D1_RECT_F rectNumber;
 
         if (node->AsDir())
         {
             std::shared_ptr<FreeSpaceNode> free = node->AsDir()->GetFreeSpace();
-            size = free && show_free ? free->GetFreeSize() : node->AsDir()->GetEffectiveSize();
+            bytes = free && show_free ? free->GetFreeSize() : node->AsDir()->GetEffectiveSize();
         }
         else if (node->AsFile())
-            size = node->AsFile()->GetSize();
+            bytes = node->AsFile()->GetSize();
         else if (node->AsFreeSpace())
-            size = node->AsFreeSpace()->GetFreeSize();
+            bytes = node->AsFreeSpace()->GetFreeSize();
         else
-            has_size = false;
+            has_bytes = false;
 
-        if (has_size)
+        if (has_bytes)
         {
-            COLORREF oldColor = 0;
-            m_sunburst.FormatSize(size, text, units);
-            GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
-            text.append(TEXT(" "));
-            text.append(units);
+            D2D1_COLOR_F oldColor = t.TextBrush()->GetColor();
+            m_sunburst.FormatSize(bytes, text, units);
+
             if (node->IsCompressed())
-            {
-                text.append(TEXT(" compressed"));
-                oldColor = SetTextColor(hdc, RGB(0, 51, 255));
-            }
-            ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
+                t.TextBrush()->SetColor(D2D1::ColorF(0x0033ff));
+
+            rectNumber = rectLine;
+            rectNumber.right = FLOAT(m_cxNumberArea);
+            t.WriteText(t.TextFormat(), 0.0f, rectNumber.top, rectNumber, text, WTO_RIGHT_ALIGN);
             if (node->IsCompressed())
-                SetTextColor(hdc, oldColor);
+                units.append(TEXT(" compressed"));
+            t.WriteText(t.TextFormat(), rectLine.left + m_cxNumberArea + padding, rectLine.top, rectLine, units);
+
+            if (node->IsCompressed())
+                t.TextBrush()->SetColor(oldColor);
         }
+
+        rectLine.top += t.FontSize();
 
         if (node->AsDir() && !show_free && !node->AsDir()->IsRecycleBin())
         {
             FormatCount(node->AsDir()->CountFiles(), text);
-            GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
-            text.append(TEXT(" Files"));
-            OffsetRect(&rcLine, 0, tm.tmHeight);
-            ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
+            rectNumber = rectLine;
+            rectNumber.right = FLOAT(m_cxNumberArea);
+            t.WriteText(t.TextFormat(), 0.0f, rectNumber.top, rectNumber, text, WTO_RIGHT_ALIGN);
+            text = TEXT("Files");
+            t.WriteText(t.TextFormat(), rectLine.left + m_cxNumberArea + padding, rectLine.top, rectLine, text);
+            rectLine.top += t.FontSize();
 
             FormatCount(node->AsDir()->CountDirs(true/*include_recycle*/), text);
-            GetTextExtentPoint32(hdc, text.c_str(), int(text.length()), &textSize);
-            text.append(TEXT(" Dirs"));
-            OffsetRect(&rcLine, 0, tm.tmHeight);
-            ExtTextOut(hdc, rcLine.left + std::max<LONG>(0, m_cxNumberArea - textSize.cx), rcLine.top, 0, &rcLine, text.c_str(), int(text.length()), nullptr);
+            rectNumber = rectLine;
+            rectNumber.right = FLOAT(m_cxNumberArea);
+            t.WriteText(t.TextFormat(), 0.0f, rectNumber.top, rectNumber, text, WTO_RIGHT_ALIGN);
+            text = TEXT("Dirs");
+            t.WriteText(t.TextFormat(), rectLine.left + m_cxNumberArea + padding, rectLine.top, rectLine, text);
+            rectLine.top += t.FontSize();
         }
     }
+}
+
+void MainWindow::DrawAppInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect)
+{
+    WCHAR sz[100];
+    std::wstring text;
+
+#ifdef DEBUG
+    {
+        static int s_counter = 0;
+        s_counter++;
+
+        auto rectDbgInfo = rect;
+        rectDbgInfo.bottom -= m_margin_reserve;
+
+        swprintf_s(sz, _countof(sz), TEXT("%u nodes / %u paints"), CountNodes(), s_counter);
+        t.WriteText(t.TextFormat(), 0.0f, 0.0f, rectDbgInfo, sz, wcslen(sz), WTO_HCENTER|WTO_BOTTOM_ALIGN);
+    }
+#endif
+
+    const LONG padding = m_dpi.Scale(4);
+    rect.right -= padding;
+    rect.bottom -= padding;
+
+    text = TEXT("Elucidisk github repo");
+    auto oldColor = t.TextBrush()->GetColor();
+    t.TextBrush()->SetColor(D2D1::ColorF(0x3333ff));
+    t.WriteText(t.TextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS|WTO_UNDERLINE);
+    m_web_link_rect.left = LONG(t.LastTextPosition().x);
+    m_web_link_rect.top = LONG(t.LastTextPosition().y);
+    m_web_link_rect.right = LONG(rect.right);
+    m_web_link_rect.bottom = LONG(rect.bottom);
+    t.TextBrush()->SetColor(oldColor);
+    rect.bottom -= t.LastTextSize().height;
+
+    text = TEXT("by Christopher Antos");
+    t.WriteText(t.TextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
+    rect.bottom -= t.LastTextSize().height;
+
+    text = TEXT(COPYRIGHT_STR);
+    const WCHAR* end = wcschr(wcschr(wcschr(text.c_str(), ' ') + 1, ' ') + 1, ' ');
+    text.resize(end - text.c_str());
+    t.WriteText(t.TextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
+    rect.bottom -= t.LastTextSize().height;
+
+    swprintf_s(sz, _countof(sz), TEXT("Version %u.%u"), VERSION_MAJOR, VERSION_MINOR);
+    t.WriteText(t.TextFormat(), 0.0f, 0.0f, rect, sz, wcslen(sz), WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
+    rect.bottom -= t.LastTextSize().height;
 }
 
 LRESULT CALLBACK MainWindow::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -1305,8 +1376,6 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             m_buttons.ShowButton(IDM_UP, m_roots.size() == 1 && (m_roots[0]->GetParent() || m_original_roots.size() > 1));
             m_buttons.ShowButton(IDM_BACK, m_back_current > 0);
 
-            // D2D rendering.
-
             if (SUCCEEDED(m_directRender.CreateDeviceResources(m_hwnd, m_dpi)))
             {
                 ID2D1RenderTarget* const pTarget = m_directRender.Target();
@@ -1318,6 +1387,8 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 pTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
 
                 const D2D1_SIZE_F rtSize = pTarget->GetSize();
+                const D2D1_RECT_F rectClient = D2D1::RectF(FLOAT(rcClient.left), FLOAT(rcClient.top), FLOAT(rcClient.right), FLOAT(rcClient.bottom));
+
                 const FLOAT width = rtSize.width - (m_margin_reserve + m_dpi.Scale(32) + m_margin_reserve) * 2;
                 const FLOAT height = rtSize.height - (m_margin_reserve + m_top_reserve);
 
@@ -1382,95 +1453,22 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                         }
                     }
 
-                    D2D1_SIZE_F size;
-                    SPI<IDWriteTextLayout> spLayout;
-                    if (m_directRender.MeasureText(m_directRender.CenterTextFormat(), bounds, text.c_str(), text.length(), size, spLayout.UnsafeAddress()))
+                    m_directRender.WriteText(m_directRender.CenterTextFormat(), 0.0f, 0.0f, bounds, text, WTO_HCENTER|WTO_VCENTER|WTO_REMEMBER_METRICS);
+                    if (!text2.empty())
                     {
-                        xx = FLOAT(floor(bounds.left + (bounds.right - bounds.left - size.width) / 2));
-                        yy = FLOAT(floor(bounds.top + (bounds.bottom - bounds.top - size.height) / 2));
-                        m_directRender.WriteText(m_directRender.CenterTextFormat(), xx, yy, bounds, text.c_str(), text.length(), WTO_NONE, spLayout);
-
-                        if (!text2.empty() && m_directRender.MeasureText(m_directRender.TextFormat(), bounds, text2.c_str(), text2.length(), size, spLayout.UnsafeAddress()))
-                        {
-                            xx = FLOAT(floor(bounds.left + (bounds.right - bounds.left - size.width) / 2));
-                            yy -= size.height;
-                            m_directRender.WriteText(m_directRender.TextFormat(), xx, yy, bounds, text.c_str(), text.length(), WTO_NONE, spLayout);
-                        }
+                        D2D1_RECT_F rectLabel = bounds;
+                        rectLabel.bottom = m_directRender.LastTextPosition().y;
+                        m_directRender.WriteText(m_directRender.TextFormat(), 0.0f, 0.0f, rectLabel, text2, WTO_HCENTER|WTO_BOTTOM_ALIGN);
                     }
                 }
+
+                DrawNodeInfo(m_directRender, rectClient, m_hover_node, m_hover_free);
+                DrawAppInfo(m_directRender, rectClient);
 
                 if (FAILED(pTarget->EndDraw()))
                     m_directRender.ReleaseDeviceResources();
 
                 pTarget->Release();
-            }
-
-            // GDI painting.
-
-            if (m_hfont)
-            {
-                SetBkMode(ps.hdc, TRANSPARENT);
-
-// TODO: Draw node info using D2D.
-                DrawNodeInfo(ps.hdc, rcClient, m_hover_node, m_hover_free);
-
-// TODO: Draw app info using D2D.
-                {
-                    WCHAR sz[100];
-                    SIZE size;
-                    LONG yy = rcClient.bottom - m_margin_reserve;
-#ifdef DEBUG
-                    static int s_counter = 0;
-                    s_counter++;
-
-                    swprintf_s(sz, _countof(sz), TEXT("%u nodes"), CountNodes());
-                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    yy -= size.cy;
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
-
-                    swprintf_s(sz, _countof(sz), TEXT("%u paints"), s_counter);
-                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    yy -= size.cy;
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
-#else
-                    TEXTMETRIC tm;
-                    GetTextMetrics(ps.hdc, &tm);
-
-                    swprintf_s(sz, _countof(sz), TEXT("Elucidisk github repo"));
-                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    yy -= size.cy;
-                    COLORREF old_color = SetTextColor(ps.hdc, RGB(51, 51, 255));
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
-                    RECT rcUnderline;
-                    rcUnderline.left = rcClient.right - (size.cx + m_margin_reserve);
-                    rcUnderline.top = yy;
-                    rcUnderline.right = rcClient.right - m_margin_reserve;
-                    rcUnderline.bottom = yy + size.cy;
-                    m_web_link_rect = rcUnderline;
-                    rcUnderline.top += tm.tmAscent + m_dpi.Scale(1);
-                    rcUnderline.bottom = rcUnderline.top + m_dpi.Scale(1);
-                    COLORREF old_bkcolor = SetBkColor(ps.hdc, RGB(51, 51, 255));
-                    ExtTextOut(ps.hdc, 0, 0, ETO_OPAQUE, &rcUnderline, nullptr, 0, nullptr);
-                    SetBkColor(ps.hdc, old_bkcolor);
-                    SetTextColor(ps.hdc, old_color);
-
-                    swprintf_s(sz, _countof(sz), TEXT("by Christopher Antos"));
-                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    yy -= size.cy;
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
-
-                    const WCHAR* text = TEXT(COPYRIGHT_STR);
-                    const WCHAR* end = wcschr(wcschr(wcschr(text, ' ') + 1, ' ') + 1, ' ');
-                    GetTextExtentPoint32(ps.hdc, sz, int(end - text), &size);
-                    yy -= size.cy;
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, text, int(end - text), 0);
-
-                    swprintf_s(sz, _countof(sz), TEXT("Version %u.%u"), VERSION_MAJOR, VERSION_MINOR);
-                    GetTextExtentPoint32(ps.hdc, sz, int(wcslen(sz)), &size);
-                    yy -= size.cy;
-                    ExtTextOut(ps.hdc, rcClient.right - (size.cx + m_margin_reserve), yy, 0, &rcClient, sz, int(wcslen(sz)), 0);
-#endif
-                }
             }
 
             RestoreDC(ps.hdc, -1);

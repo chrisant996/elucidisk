@@ -11,6 +11,7 @@
 #include <dwrite_1.h>
 #include <dwrite_2.h>
 #include "TextOnPath/PathTextRenderer.h"
+#include <string>
 
 #define USE_MIN_ARC_LENGTH              // Likely permanent.
 
@@ -31,13 +32,51 @@ bool GetDWriteFactory(IDWriteFactory2** ppFactory);
 enum WriteTextOptions
 {
     WTO_NONE                = 0x0000,
-    WTO_CENTER              = 0x0001,
-    WTO_PATH_ELLIPSIS       = 0x0002,
+    WTO_REMEMBER_METRICS    = 0x0001,
+    WTO_CLIP                = 0x0002,
+    WTO_HCENTER             = 0x0004,
+    WTO_VCENTER             = 0x0008,
+    WTO_RIGHT_ALIGN         = 0x0010,
+    WTO_BOTTOM_ALIGN        = 0x0020,
+
+    WTO_UNDERLINE           = 0x4000,
+    WTO_PATH_ELLIPSIS       = 0x8000,
 };
 DEFINE_ENUM_FLAG_OPERATORS(WriteTextOptions);
 
 class DirectHwndRenderTarget
 {
+    struct Resources
+    {
+        HRESULT                     Init(HWND hwnd, const D2D1_SIZE_U& size, const DpiScaler& dpi);
+
+        SPI<ID2D1Factory>           m_spFactory;
+        SPI<IDWriteFactory2>        m_spDWriteFactory;
+
+        SPI<ID2D1HwndRenderTarget>  m_spTarget;
+        SPQI<ID2D1DeviceContext>    m_spContext;
+
+        SPI<ID2D1SolidColorBrush>   m_spLineBrush;
+        SPI<ID2D1SolidColorBrush>   m_spFileLineBrush;
+        SPI<ID2D1SolidColorBrush>   m_spFillBrush;
+        SPI<ID2D1SolidColorBrush>   m_spTextBrush;
+
+        SPI<ID2D1StrokeStyle>       m_spRoundedStroke;
+
+        SPI<IDWriteTextFormat>      m_spTextFormat;
+        SPI<IDWriteTextFormat>      m_spCenterTextFormat;
+        FLOAT                       m_fontSize = 0.0f;
+        FLOAT                       m_centerFontSize = 0.0f;
+
+        SPI<IDWriteTextFormat>      m_spArcTextFormat;
+        SPI<IDWriteRenderingParams> m_spRenderingParams;
+        SPI<PathTextRenderer>       m_spPathTextRenderer;
+        FLOAT                       m_arcFontSize = 0.0f;
+
+        D2D1_POINT_2F               m_lastTextPosition = D2D1::Point2F();
+        D2D1_SIZE_F                 m_lastTextSize = D2D1::SizeF();
+    };
+
 public:
                             DirectHwndRenderTarget();
                             ~DirectHwndRenderTarget();
@@ -46,47 +85,37 @@ public:
     HRESULT                 ResizeDeviceResources();
     void                    ReleaseDeviceResources();
 
-    ID2D1Factory*           Factory() const { return m_spFactory; }
-    IDWriteFactory*         DWriteFactory() const { return m_spDWriteFactory; }
-    ID2D1RenderTarget*      Target() const { return m_spTarget; }
+    ID2D1Factory*           Factory() const { return m_resources->m_spFactory; }
+    IDWriteFactory*         DWriteFactory() const { return m_resources->m_spDWriteFactory; }
+    ID2D1RenderTarget*      Target() const { return m_resources->m_spTarget; }
 
-    ID2D1SolidColorBrush*   LineBrush() const { return m_spLineBrush; }
-    ID2D1SolidColorBrush*   FileLineBrush() const { return m_spFileLineBrush; }
-    ID2D1SolidColorBrush*   FillBrush() const { return m_spFillBrush; }
-    ID2D1StrokeStyle*       RoundedStrokeStyle() const { return m_spRoundedStroke; }
-    IDWriteTextFormat*      TextFormat() const { return m_spTextFormat; }
-    FLOAT                   FontSize() const { return m_fontSize; }
-    IDWriteTextFormat*      CenterTextFormat() const { return m_spCenterTextFormat; }
-    FLOAT                   CenterFontSize() const { return m_centerFontSize; }
+    ID2D1SolidColorBrush*   LineBrush() const { return m_resources->m_spLineBrush; }
+    ID2D1SolidColorBrush*   FileLineBrush() const { return m_resources->m_spFileLineBrush; }
+    ID2D1SolidColorBrush*   FillBrush() const { return m_resources->m_spFillBrush; }
+    ID2D1SolidColorBrush*   TextBrush() const { return m_resources->m_spTextBrush; }
 
-    ID2D1DeviceContext*     Context() const { return m_spContext; }
-    IDWriteTextFormat*      ArcTextFormat() const { return m_spArcTextFormat; }
-    PathTextRenderer*       ArcTextRenderer() const { return m_spPathTextRenderer; }
-    FLOAT                   ArcFontSize() const { return m_arcFontSize; }
+    ID2D1StrokeStyle*       RoundedStrokeStyle() const { return m_resources->m_spRoundedStroke; }
+
+    IDWriteTextFormat*      TextFormat() const { return m_resources->m_spTextFormat; }
+    FLOAT                   FontSize() const { return m_resources->m_fontSize; }
+    IDWriteTextFormat*      CenterTextFormat() const { return m_resources->m_spCenterTextFormat; }
+    FLOAT                   CenterFontSize() const { return m_resources->m_centerFontSize; }
+
+    ID2D1DeviceContext*     Context() const { return m_resources->m_spContext; }
+    IDWriteTextFormat*      ArcTextFormat() const { return m_resources->m_spArcTextFormat; }
+    PathTextRenderer*       ArcTextRenderer() const { return m_resources->m_spPathTextRenderer; }
+    FLOAT                   ArcFontSize() const { return m_resources->m_arcFontSize; }
 
     bool                    MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout=nullptr);
+    bool                    MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const std::wstring& text, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout=nullptr);
     bool                    WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT y, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, WriteTextOptions options=WTO_NONE, IDWriteTextLayout* pLayout=nullptr);
+    bool                    WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT y, const D2D1_RECT_F& rect, const std::wstring& text, WriteTextOptions options=WTO_NONE, IDWriteTextLayout* pLayout=nullptr);
+    D2D1_POINT_2F           LastTextPosition() const { return m_resources->m_lastTextPosition; }
+    D2D1_SIZE_F             LastTextSize() const { return m_resources->m_lastTextSize; }
 
 private:
     HWND                        m_hwnd = 0;
-    SPI<ID2D1Factory>           m_spFactory;
-    SPI<IDWriteFactory2>        m_spDWriteFactory;
-    SPI<ID2D1HwndRenderTarget>  m_spTarget;
-
-    SPI<ID2D1SolidColorBrush>   m_spLineBrush;
-    SPI<ID2D1SolidColorBrush>   m_spFileLineBrush;
-    SPI<ID2D1SolidColorBrush>   m_spFillBrush;
-    SPI<ID2D1StrokeStyle>       m_spRoundedStroke;
-    SPI<IDWriteTextFormat>      m_spTextFormat;
-    SPI<IDWriteTextFormat>      m_spCenterTextFormat;
-    FLOAT                       m_fontSize;
-    FLOAT                       m_centerFontSize;
-
-    SPQI<ID2D1DeviceContext>    m_spContext;
-    SPI<IDWriteTextFormat>      m_spArcTextFormat;
-    SPI<IDWriteRenderingParams> m_spRenderingParams;
-    SPI<PathTextRenderer>       m_spPathTextRenderer;
-    FLOAT                       m_arcFontSize = 0.0f;
+    std::unique_ptr<Resources>  m_resources;
 };
 
 class Sunburst
