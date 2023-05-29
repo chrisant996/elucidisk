@@ -832,6 +832,8 @@ protected:
     void                    DrawAppInfo(DirectHwndRenderTarget& target, D2D1_RECT_F rect);
 
     void                    Expand(const std::shared_ptr<Node>& node);
+    void                    SetRoot(const std::shared_ptr<DirNode>& root);
+    void                    SetRoots(const std::vector<std::shared_ptr<DirNode>>& roots);
     void                    Up();
     void                    Back();
     void                    Forward();
@@ -931,7 +933,7 @@ HWND MainWindow::Create()
 
 void MainWindow::Scan(int argc, const WCHAR** argv, bool rescan)
 {
-    m_roots = m_scanner.Start(argc, argv);
+    SetRoots(m_scanner.Start(argc, argv));
     if (!rescan)
         m_original_roots = m_roots;
 
@@ -940,6 +942,35 @@ void MainWindow::Scan(int argc, const WCHAR** argv, bool rescan)
     m_back_current = 0;
 
     SetTimer(m_hwnd, TIMER_PROGRESS, INTERVAL_PROGRESS, nullptr);
+}
+
+void MainWindow::SetRoot(const std::shared_ptr<DirNode>& root)
+{
+    if (root)
+    {
+        std::vector<std::shared_ptr<DirNode>> roots;
+        roots.emplace_back(root);
+        SetRoots(roots);
+    }
+    else
+    {
+        SetRoots(m_original_roots);
+    }
+}
+
+void MainWindow::SetRoots(const std::vector<std::shared_ptr<DirNode>>& roots)
+{
+    m_roots.clear();
+    m_roots = roots;
+
+    std::wstring title = TEXT("Elucidisk");
+    for (size_t ii = 0; ii < m_roots.size(); ++ii)
+    {
+        title.append(ii ? TEXT(" , ") : TEXT(" - "));
+        title.append(m_roots[ii]->GetName());
+    }
+    SetWindowText(m_hwnd, title.c_str());
+
     InvalidateRect(m_hwnd, nullptr, false);
 }
 
@@ -956,7 +987,7 @@ void MainWindow::Expand(const std::shared_ptr<Node>& node)
         if (m_original_roots.size() == 1 && node == m_original_roots[0])
             return;
 
-        m_roots = m_original_roots;
+        SetRoots(m_original_roots);
         assert(back == nullptr);
     }
     else
@@ -970,8 +1001,7 @@ void MainWindow::Expand(const std::shared_ptr<Node>& node)
         if (!dir)
             return;
 
-        m_roots.clear();
-        m_roots.emplace_back(dir);
+        SetRoot(dir);
         back = dir;
     }
 
@@ -993,15 +1023,7 @@ void MainWindow::Back()
     if (m_back_current == 0)
         return;
 
-    std::shared_ptr<DirNode> root = m_back_stack[--m_back_current];
-
-    m_roots.clear();
-    if (root)
-        m_roots.emplace_back(root);
-    else
-        m_roots = m_original_roots;
-
-    InvalidateRect(m_hwnd, nullptr, false);
+    SetRoot(m_back_stack[--m_back_current]);
 }
 
 void MainWindow::Forward()
@@ -1009,15 +1031,7 @@ void MainWindow::Forward()
     if (m_back_current + 1 == m_back_stack.size())
         return;
 
-    std::shared_ptr<DirNode> root = m_back_stack[++m_back_current];
-
-    m_roots.clear();
-    if (root)
-        m_roots.emplace_back(root);
-    else
-        m_roots = m_original_roots;
-
-    InvalidateRect(m_hwnd, nullptr, false);
+    SetRoot(m_back_stack[++m_back_current]);
 }
 
 void MainWindow::Summary()
