@@ -1053,7 +1053,13 @@ void MainWindow::EnumDrives()
                 *q = 0;
             }
 
-            m_drives.emplace_back(drive);
+            const UINT type = GetDriveType(drive);
+            if (type == DRIVE_FIXED || type == DRIVE_RAMDISK)
+            {
+                // Skip SUBST drives.
+                if (!is_subst(drive))
+                    m_drives.emplace_back(drive);
+            }
         }
     }
 
@@ -1889,7 +1895,7 @@ void MainWindow::OnLayout(RECT* prc)
     rc.bottom = prc->bottom - margin;
     rc.right = rc.left + (dim * 5 / 2);
     rc.top = rc.bottom - dim;
-    m_buttons.AddButton(IDM_SUMMARY, rc, TEXT("Summary"), TEXT("Summary of Drives"));
+    m_buttons.AddButton(IDM_SUMMARY, rc, TEXT("Summary"), TEXT("Summary of Local Drives"));
 
     rc.left = prc->left + margin;
     rc.top = prc->top + m_top_reserve + m_margin_reserve + m_top_reserve + m_top_reserve + margin;

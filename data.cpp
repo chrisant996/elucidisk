@@ -27,6 +27,12 @@ void ensure_separator(std::wstring& path)
     }
 }
 
+void strip_separator(std::wstring& path)
+{
+    while (path.length() && is_separator(path.c_str()[path.length() - 1]))
+        path.resize(path.length() - 1);
+}
+
 static void build_full_path(std::wstring& path, const Node* node)
 {
     if (!node)
@@ -45,8 +51,7 @@ static void build_full_path(std::wstring& path, const Node* node)
             path = dir->GetName();
             path.append(TEXT(" on "));
             path.append(dir->GetParent()->GetName());
-            while (is_separator(path.c_str()[path.length() - 1]))
-                path.resize(path.length() - 1);
+            strip_separator(path);
         }
         else
         {
@@ -73,7 +78,20 @@ bool is_drive(const WCHAR* path)
 {
     // FUTURE: Recognize UNC shares and on \\?\X: drives.  But that might not
     // be sufficient to support FreeSpace and RecycleBin for those.
-    return (path[0] && path[1] == ':' && is_separator(path[2]) && !path[3]);
+    return (path[0] && path[1] == ':' && (!path[2] ||
+                                          (is_separator(path[2]) && !path[3])));
+}
+
+bool is_subst(const WCHAR* path)
+{
+    std::wstring device = path;
+    strip_separator(device);
+
+    WCHAR szTargetPath[1024];
+    if (QueryDosDevice(device.c_str(), szTargetPath, _countof(szTargetPath)))
+        return (wcsnicmp(szTargetPath, TEXT("\\??\\"), 4) == 0);
+
+    return false;
 }
 
 #ifdef DEBUG
@@ -264,6 +282,10 @@ void DriveNode::AddRecycleBin()
 {
     assert(!IsFake());
 
+    // Skip SUBST drives.
+    if (is_subst(GetName()))
+        return;
+
     const std::shared_ptr<DirNode> parent = std::static_pointer_cast<DirNode>(shared_from_this());
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -273,6 +295,28 @@ void DriveNode::AddRecycleBin()
 
     m_recycle->UpdateRecycleBin();
     m_recycle->Finish();
+}
+
+void DriveNode::AddFreeSpace()
+{
+    assert(!IsFake());
+
+    // Skip SUBST drives.
+    if (is_subst(GetName()))
+        return;
+
+    DWORD sectors_per_cluster;
+    DWORD bytes_per_sector;
+    DWORD free_clusters;
+    DWORD total_clusters;
+    if (GetDiskFreeSpace(GetName(), &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
+    {
+        const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
+        const ULONGLONG free = ULONGLONG(free_clusters) * bytes_per_cluster;
+        const ULONGLONG total = ULONGLONG(total_clusters) * bytes_per_cluster;
+
+        AddFreeSpace(free, total);
+    }
 }
 
 void DriveNode::AddFreeSpace(ULONGLONG free, ULONGLONG total)

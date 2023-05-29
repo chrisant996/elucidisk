@@ -136,6 +136,7 @@ public:
     virtual DriveNode*      AsDrive() { return this; }
     virtual const DriveNode* AsDrive() const { return this; }
     void                    AddRecycleBin();
+    void                    AddFreeSpace();
     void                    AddFreeSpace(ULONGLONG free, ULONGLONG total);
     virtual std::shared_ptr<RecycleBinNode> GetRecycleBin() const override { return m_recycle; }
     virtual std::shared_ptr<FreeSpaceNode> GetFreeSpace() const override { return m_free; }
@@ -147,7 +148,9 @@ private:
 
 inline bool is_separator(const WCHAR ch) { return ch == '/' || ch == '\\'; }
 void ensure_separator(std::wstring& path);
+void strip_separator(std::wstring& path);
 
 bool is_root_finished(const std::shared_ptr<Node>& node);
 bool is_drive(const WCHAR* path);
+bool is_subst(const WCHAR* path);
 

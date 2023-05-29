@@ -83,17 +83,7 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
     {
         DriveNode* drive = root->AsDrive();
         if (drive)
-        {
-            DWORD sectors_per_cluster;
-            DWORD bytes_per_sector;
-            DWORD free_clusters;
-            DWORD total_clusters;
-            if (GetDiskFreeSpace(root->GetName(), &sectors_per_cluster, &bytes_per_sector, &free_clusters, &total_clusters))
-            {
-                const ULONGLONG bytes_per_cluster = sectors_per_cluster * bytes_per_sector;
-                drive->AddFreeSpace(ULONGLONG(free_clusters) * bytes_per_cluster, ULONGLONG(total_clusters) * bytes_per_cluster);
-            }
-        }
+            drive->AddFreeSpace();
     }
 
     return root;
