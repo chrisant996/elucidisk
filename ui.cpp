@@ -1179,8 +1179,7 @@ void MainWindow::DrawNodeInfo(HDC hdc, const RECT& rc, const std::shared_ptr<Nod
             text.clear();
             for (size_t ii = 0; ii < m_roots.size(); ++ii)
             {
-                if (ii)
-                    text.append(TEXT(" , "));
+                text.append(ii ? TEXT(" , ") : TEXT("Scan of "));
                 m_roots[ii]->GetFullPath(path);
                 text.append(path);
             }
