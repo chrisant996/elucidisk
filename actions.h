@@ -15,5 +15,3 @@ bool ShellDelete(HWND hwnd, const WCHAR* path);
 bool ShellEmptyRecycleBin(HWND hwnd, const WCHAR* path);
 bool ShellBrowseForFolder(HWND hwnd, const WCHAR* title, std::wstring& inout);
 
-bool IsSystemOrSpecial(const WCHAR* path);
-

@@ -141,13 +141,6 @@ LShellError:
     return true;
 }
 
-bool IsSystemOrSpecial(const WCHAR* path)
-{
-// TODO: Detect system folders and special folders, to help avoid deleting
-// things like \Windows\ or \Users\Joe\ or etc.
-    return false;
-}
-
 //----------------------------------------------------------------------------
 // Helpers.
 
@@ -208,14 +201,160 @@ static int CALLBACK BFF_Callback(HWND hwnd, UINT uMsg, LPARAM lParam, LPARAM lpD
     return 0;
 }
 
+enum class CautionLevel { Normal, SystemFile, SystemDir, SpecialDir, Windows, Error };
+
+static CautionLevel AssessCautionLevel(const WCHAR* _path)
+{
+    std::wstring path = _path;
+    strip_separator(path);
+    if (path.empty())
+        return CautionLevel::Error;
+
+    // Disallow attempting to delete a drive.
+    if (is_drive(path.c_str()))
+        return CautionLevel::Error;
+
+    WIN32_FIND_DATA fd;
+    HANDLE hFind = FindFirstFile(path.c_str(), &fd);
+    if (hFind == INVALID_HANDLE_VALUE)
+        return CautionLevel::Error;
+
+    CautionLevel caution = CautionLevel::Normal;
+
+    FindClose(hFind);
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
+        caution = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? CautionLevel::SystemDir : CautionLevel::SystemFile;
+
+    struct QuirkySpecialFolder
+    {
+        CautionLevel caution;
+        const KNOWNFOLDERID* kid;
+        const WCHAR* path;
+        bool children;
+        bool recursive;
+    };
+
+    static const QuirkySpecialFolder c_quirky[] =
+    {
+        { CautionLevel::Windows, &FOLDERID_Windows },
+        { CautionLevel::Windows, &FOLDERID_Windows, nullptr, true/*children*/, true/*recursive*/ },
+        { CautionLevel::SpecialDir, &FOLDERID_Profile, TEXT("AppData") },
+        { CautionLevel::SpecialDir, &FOLDERID_UserProfiles, nullptr, true/*children*/ },
+    };
+
+    static const KNOWNFOLDERID c_kids[] =
+    {
+        FOLDERID_UserProfiles,
+
+        FOLDERID_AccountPictures,
+        FOLDERID_CameraRoll,
+        FOLDERID_Contacts,
+        FOLDERID_Desktop,
+        FOLDERID_Documents,
+        FOLDERID_Downloads,
+        FOLDERID_Favorites,
+        FOLDERID_Fonts,
+        FOLDERID_Links,
+        FOLDERID_Music,
+        FOLDERID_Pictures,
+        FOLDERID_Playlists,
+        FOLDERID_Videos,
+
+        FOLDERID_Profile,
+        FOLDERID_LocalAppData,
+        FOLDERID_LocalAppDataLow,
+        FOLDERID_RoamingAppData,
+        FOLDERID_AppDataDesktop,
+        FOLDERID_AppDataDocuments,
+        FOLDERID_AppDataFavorites,
+        FOLDERID_AppDataProgramData,
+
+        FOLDERID_Programs,
+        FOLDERID_ProgramData,
+        FOLDERID_ProgramFilesX64,
+        FOLDERID_ProgramFilesX86,
+        FOLDERID_ProgramFilesCommonX64,
+        FOLDERID_ProgramFilesCommonX86,
+        FOLDERID_UserProgramFiles,
+        FOLDERID_UserProgramFilesCommon,
+
+        FOLDERID_StartMenu,
+        FOLDERID_StartMenuAllPrograms,
+        FOLDERID_CommonStartMenu,
+        FOLDERID_SendTo,
+
+        FOLDERID_SkyDrive,
+        FOLDERID_SkyDriveCameraRoll,
+        FOLDERID_SkyDriveDocuments,
+        FOLDERID_SkyDriveMusic,
+        FOLDERID_SkyDrivePictures,
+    };
+
+    std::wstring tmp;
+    for (const auto& quirky : c_quirky)
+    {
+        tmp.clear();
+
+        WCHAR* pszPath = nullptr;
+        const HRESULT hr = SHGetKnownFolderPath(*quirky.kid, KF_FLAG_DONT_VERIFY|KF_FLAG_NO_ALIAS, nullptr, &pszPath);
+        if (SUCCEEDED(hr))
+            tmp = pszPath;
+        if (pszPath)
+            CoTaskMemFree(pszPath);
+
+        if (!tmp.empty())
+        {
+            if (quirky.path)
+            {
+                tmp.append(TEXT("\\"));
+                tmp.append(quirky.path);
+            }
+
+            bool match = false;
+            if (quirky.children)
+            {
+                tmp.append(TEXT("\\"));
+                if (!wcsnicmp(tmp.c_str(), path.c_str(), tmp.length()))
+                {
+                    if (quirky.recursive)
+                        match = true;
+                    else
+                        match = !wcschr(path.c_str() + tmp.length(), '\\');
+                }
+            }
+            else
+            {
+                match = !wcsicmp(tmp.c_str(), path.c_str());
+            }
+
+            if (match)
+            {
+                caution = quirky.caution;
+                break;
+            }
+        }
+    }
+
+    for (const auto& kid : c_kids)
+    {
+        WCHAR* pszPath = nullptr;
+        const HRESULT hr = SHGetKnownFolderPath(kid, KF_FLAG_DONT_VERIFY|KF_FLAG_NO_ALIAS, nullptr, &pszPath);
+        const bool special = (SUCCEEDED(hr) && !wcsicmp(pszPath, path.c_str()));
+        if (pszPath)
+            CoTaskMemFree(pszPath);
+
+        if (special)
+        {
+            caution = CautionLevel::SpecialDir;
+            break;
+        }
+    }
+
+    return caution;
+}
+
 static bool ShellDeleteInternal(HWND hwnd, const WCHAR* _path, bool permanent)
 {
-    const size_t len = wcslen(_path);
-    // NOTE: calloc zero-fills, satisfying the double nul termination required
-    // by SHFileOperation.
-    WCHAR* pathzz = (WCHAR*)calloc(len + 2, sizeof(*pathzz));
-    memcpy(pathzz, _path, len * sizeof(*pathzz));
-
 #if 0
     if (!permanent)
     {
@@ -225,6 +364,53 @@ static bool ShellDeleteInternal(HWND hwnd, const WCHAR* _path, bool permanent)
             return false;
     }
 #endif
+
+    CautionLevel caution = AssessCautionLevel(_path);
+    if (caution != CautionLevel::Normal)
+    {
+        WCHAR message[2048];
+        const WCHAR* title = nullptr;
+        const WCHAR* format = nullptr;
+        switch (caution)
+        {
+        case CautionLevel::SystemFile:
+            title = TEXT("Caution - System File");
+            format = TEXT("\"%s\" is a System File.%s");
+            break;
+        case CautionLevel::SystemDir:
+            title = TEXT("Caution - System Directory");
+            format = TEXT("\"%s\" is a System Directory.%s");
+            break;
+        case CautionLevel::SpecialDir:
+            title = TEXT("Caution - Special Directory");
+            format = TEXT("\"%s\" is a Special Directory.%s");
+            break;
+        case CautionLevel::Windows:
+            MessageBox(hwnd, TEXT("Sorry, deleting core Windows OS files and directories is too dangerous."), TEXT("Caution - Operating System Directories"), MB_OK|MB_ICONSTOP);
+            return false;
+        default:
+            assert(false);
+            MessageBeep(0xffffffff);
+            return false;
+        }
+
+        swprintf_s(message, _countof(message), format, _path, TEXT("\r\n\r\nAre you sure you want to continue?"), _path);
+        if (MessageBox(hwnd, message, title, MB_YESNOCANCEL|MB_ICONWARNING) != IDYES)
+            return false;
+    }
+
+#ifdef DEBUG
+    if (MessageBox(hwnd, TEXT("FIRST EXTRA CONFIRMATION IN DEBUG BUILDS!"), TEXT("Caution - First Chance"), MB_YESNOCANCEL|MB_ICONWARNING) != IDYES)
+        return false;
+    if (MessageBox(hwnd, TEXT("LAST EXTRA CONFIRMATION IN DEBUG BUILDS!"), TEXT("Caution - Last Chance"), MB_YESNOCANCEL|MB_ICONWARNING) != IDYES)
+        return false;
+#endif
+
+    const size_t len = wcslen(_path);
+    // NOTE: calloc zero-fills, satisfying the double nul termination required
+    // by SHFileOperation.
+    WCHAR* pathzz = (WCHAR*)calloc(len + 2, sizeof(*pathzz));
+    memcpy(pathzz, _path, len * sizeof(*pathzz));
 
     SHFILEOPSTRUCT op = { 0 };
     op.hwnd = hwnd;
