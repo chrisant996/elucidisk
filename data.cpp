@@ -131,7 +131,7 @@ void Node::GetFullPath(std::wstring& out) const
 
 std::vector<std::shared_ptr<DirNode>> DirNode::CopyDirs(bool include_recycle) const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
 
     std::vector<std::shared_ptr<DirNode>> dirs = m_dirs;
     if (include_recycle && GetRecycleBin())
@@ -141,7 +141,7 @@ std::vector<std::shared_ptr<DirNode>> DirNode::CopyDirs(bool include_recycle) co
 
 std::vector<std::shared_ptr<FileNode>> DirNode::CopyFiles() const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
 
     return m_files;
 }
@@ -160,7 +160,7 @@ std::shared_ptr<DirNode> DirNode::AddDir(const WCHAR* name)
     std::shared_ptr<DirNode> dir = std::make_shared<DirNode>(name, parent);
 
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
 
         m_dirs.emplace_back(dir);
 
@@ -183,7 +183,7 @@ std::shared_ptr<FileNode> DirNode::AddFile(const WCHAR* name, ULONGLONG size)
     std::shared_ptr<FileNode> file = std::make_shared<FileNode>(name, size, parent);
 
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
 
         m_files.emplace_back(file);
 
@@ -204,7 +204,7 @@ std::shared_ptr<FileNode> DirNode::AddFile(const WCHAR* name, ULONGLONG size)
 
 void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
 
     if (node->AsDir())
     {
@@ -255,6 +255,43 @@ void DirNode::DeleteChild(const std::shared_ptr<Node>& node)
     }
 }
 
+void DirNode::Clear()
+{
+    std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
+
+#ifdef DEBUG
+    if (IsFake())
+    {
+        assert(false);
+        return;
+    }
+#endif
+
+    std::shared_ptr<DirNode> parent(GetParent());
+    while (parent)
+    {
+        parent->m_size -= GetSize();
+        parent->m_count_dirs -= CountDirs();
+        parent->m_count_files -= CountFiles();
+
+        std::shared_ptr<DirNode> up = parent->m_parent.lock();
+        if (!up)
+            parent->m_finished = false;
+        parent = up;
+    }
+
+    m_dirs.clear();
+    m_files.clear();
+    m_count_dirs = 0;
+    m_count_files = 0;
+    m_size = 0;
+
+    if (AsDrive())
+        AsDrive()->AddFreeSpace();
+
+    m_finished = false;
+}
+
 void DirNode::UpdateRecycleBinMetadata(ULONGLONG size)
 {
     assert(!IsFake());
@@ -288,7 +325,7 @@ void DriveNode::AddRecycleBin()
 
     const std::shared_ptr<DirNode> parent = std::static_pointer_cast<DirNode>(shared_from_this());
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
 
         m_recycle = std::make_shared<RecycleBinNode>(parent);
     }
@@ -327,7 +364,7 @@ void DriveNode::AddFreeSpace(ULONGLONG free, ULONGLONG total)
 
     const std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
 
         m_free = std::make_shared<FreeSpaceNode>(name.c_str(), free, total, parent);
     }

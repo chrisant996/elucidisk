@@ -45,7 +45,7 @@ public:
     virtual const FreeSpaceNode* AsFreeSpace() const { return nullptr; }
     virtual DriveNode*      AsDrive() { return nullptr; }
     virtual const DriveNode* AsDrive() const { return nullptr; }
-    void                    SetCompressed() { m_compressed = true; }
+    void                    SetCompressed(bool compressed=true) { m_compressed = compressed; }
     bool                    IsCompressed() const { return m_compressed; }
     virtual bool            IsRecycleBin() const { return false; }
     virtual bool            IsDrive() const { return false; }
@@ -81,11 +81,12 @@ public:
     std::shared_ptr<DirNode> AddDir(const WCHAR* name);
     std::shared_ptr<FileNode> AddFile(const WCHAR* name, ULONGLONG size);
     void                    DeleteChild(const std::shared_ptr<Node>& node);
+    void                    Clear();
     void                    Finish() { m_finished = true; }
     bool                    IsFinished() const { return m_finished; }
 protected:
     void                    UpdateRecycleBinMetadata(ULONGLONG size);
-    mutable std::mutex      m_mutex;
+    mutable std::recursive_mutex m_node_mutex;
 private:
     std::vector<std::shared_ptr<DirNode>> m_dirs;
     std::vector<std::shared_ptr<FileNode>> m_files;

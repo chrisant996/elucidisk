@@ -8,10 +8,11 @@ IDR_CONTEXT_MENU MENU DISCARDABLE
 BEGIN
     POPUP ""
     BEGIN
+        MENUITEM "&Rescan",                 IDM_RESCAN
         MENUITEM "&Open File",              IDM_OPEN_FILE
         MENUITEM "&Open in Explorer",       IDM_OPEN_DIRECTORY
         MENUITEM SEPARATOR
-        MENUITEM "&Recycle",                IDM_RECYCLE_ENTRY
+        MENUITEM "Rec&ycle",                IDM_RECYCLE_ENTRY
         MENUITEM "&Delete",                 IDM_DELETE_ENTRY
         MENUITEM "&Empty Recycle Bin",      IDM_EMPTY_RECYCLEBIN
         MENUITEM SEPARATOR

@@ -309,12 +309,14 @@ public:
                             ~ScannerThread() { Stop(); }
 
     std::vector<std::shared_ptr<DirNode>> Start(int argc, const WCHAR** argv);
+    void                    Start(const std::shared_ptr<DirNode>& dir);
     void                    Stop();
 
     bool                    IsComplete();
     void                    GetScanningPath(std::wstring& out);
 
 protected:
+    void                    StartInternal(const std::vector<std::shared_ptr<DirNode>>& roots, bool fullscan);
     static void             ThreadProc(ScannerThread* pThis);
 
 private:
@@ -324,6 +326,7 @@ private:
     size_t                  m_cursor = 0;
     std::shared_ptr<Node>   m_current;
     std::vector<std::shared_ptr<DirNode>> m_roots;
+    bool                    m_fullscan = false;
     std::unique_ptr<std::thread> m_thread;
     std::mutex              m_mutex;
     std::recursive_mutex&   m_ui_mutex;
@@ -354,21 +357,44 @@ std::vector<std::shared_ptr<DirNode>> ScannerThread::Start(int argc, const WCHAR
         roots.emplace_back(MakeRoot(nullptr));
     }
 
+    m_fullscan = true;
+    StartInternal(roots, true);
+
+    return roots;
+}
+
+void ScannerThread::Start(const std::shared_ptr<DirNode>& dir)
+{
+    std::vector<std::shared_ptr<DirNode>> dirs;
+    dirs.emplace_back(dir);
+    StartInternal(dirs, false);
+}
+
+void ScannerThread::StartInternal(const std::vector<std::shared_ptr<DirNode>>& roots, bool fullscan)
+{
+    assert(fullscan || !m_fullscan); // Can't Rescan while a Scan is in progress.
+
     if (!m_thread)
         m_thread = std::make_unique<std::thread>(ThreadProc, this);
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        m_current.reset();
-        m_roots = roots;
-        m_cursor = 0;
+        if (fullscan)
+        {
+            m_current.reset();
+            m_roots = roots;
+            m_cursor = 0;
+        }
+        else
+        {
+            m_roots.insert(m_roots.begin() + m_cursor, roots.begin(), roots.end());
+        }
+
         InterlockedIncrement(&m_generation);
     }
 
     SetEvent(m_hWake);
-
-    return roots;
 }
 
 void ScannerThread::Stop()
@@ -381,6 +407,7 @@ void ScannerThread::Stop()
         m_current.reset();
         m_roots.clear();
         m_cursor = 0;
+        m_fullscan = false;
         ResetEvent(m_hStop);
     }
 }
@@ -424,9 +451,23 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
 
                 if (pThis->m_cursor >= pThis->m_roots.size())
                 {
+                    // This is important for the Rescan case.
+                    for (const auto& top : pThis->m_roots)
+                    {
+                        std::shared_ptr<DirNode> parent = top;
+                        while (parent)
+                        {
+                            std::shared_ptr<DirNode> up = parent->GetParent();
+                            if (!up)
+                                parent->Finish();
+                            parent = up;
+                        }
+                    }
+
                     pThis->m_current.reset();
                     pThis->m_roots.clear();
                     pThis->m_cursor = 0;
+                    pThis->m_fullscan = false;
                     break;
                 }
 
@@ -817,7 +858,8 @@ protected:
     void                    DeleteNode(const std::shared_ptr<Node>& node);
     void                    UpdateRecycleBin(const std::shared_ptr<RecycleBinNode>& recycle);
     void                    EnumDrives();
-    void                    Rescan();
+    void                    Refresh(bool all=false);
+    void                    Rescan(const std::shared_ptr<DirNode>& dir);
 
     static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -1010,26 +1052,67 @@ void MainWindow::Summary()
         Scan(int(args.size()), args.data(), false);
 }
 
-void MainWindow::Rescan()
+void MainWindow::Refresh(bool all)
 {
-    EnumDrives();
+    if (!all && m_roots.size() == 1 && m_roots[0]->GetParent() != nullptr)
+    {
+        Rescan(m_roots[0]);
+    }
+    else
+    {
+        EnumDrives();
 
-// TODO: Rescan current root(s) instead, clearing them first.  That gets
-// tricky if a scan is already in progress.  Maybe convert the recursive Scan
-// into a queue of DirNode's to be scanned, and insert the current roots at
-// the head of the queue?  And what if any of those DirNode's are already in
-// progress being scanned, or haven't been scanned yet?
-    std::vector<const WCHAR*> paths;
-    for (const auto root : m_original_roots)
-        paths.emplace_back(root->GetName());
+        std::vector<const WCHAR*> paths;
+        for (const auto root : m_original_roots)
+            paths.emplace_back(root->GetName());
 
-// TODO: I want some way to refresh the original scan, OR refresh the current
-// root.  But it isn't yet possible to scan a subtree; only top down scanning
-// is currently implemented.
-    //const bool rescan = !(m_roots.size() > 1 || (m_roots.size() == 1 && !m_roots[0]->GetParent()));
-    const bool rescan = false;
+        Scan(int(paths.size()), paths.data(), false/*rescan*/);
+    }
+}
 
-    Scan(int(paths.size()), paths.data(), rescan);
+void MainWindow::Rescan(const std::shared_ptr<DirNode>& dir)
+{
+#ifdef DEBUG
+    if (dir->IsFake())
+        return;
+#endif
+
+    if (!m_scanner.IsComplete())
+    {
+        MessageBeep(0xffffffff);
+        return;
+    }
+
+    bool compressed = false;
+    {
+        std::wstring path;
+        dir->GetFullPath(path);
+        strip_separator(path);
+
+        if (!is_drive(path.c_str()))
+        {
+            WIN32_FIND_DATA fd;
+            HANDLE hFind = FindFirstFile(path.c_str(), &fd);
+            if (hFind != INVALID_HANDLE_VALUE)
+            {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_COMPRESSED)
+                    compressed = true;
+                FindClose(hFind);
+            }
+        }
+    }
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
+
+        dir->Clear();
+        dir->SetCompressed(compressed);
+    }
+
+    m_scanner.Start(dir);
+
+    SetTimer(m_hwnd, TIMER_PROGRESS, INTERVAL_PROGRESS, nullptr);
+    InvalidateRect(m_hwnd, nullptr, false);
 }
 
 void MainWindow::EnumDrives()
@@ -1302,6 +1385,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
             // GDI painting.
 
+// TODO: Convert to use D2D; will resolve the flicker.
             if (m_hfont)
             {
                 SetBkMode(ps.hdc, TRANSPARENT);
@@ -1532,8 +1616,19 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             HMENU hmenu = LoadMenu(m_hinst, MAKEINTRESOURCE(IDR_CONTEXT_MENU));
             HMENU hmenuSub = GetSubMenu(hmenu, nPos);
 
+            const bool root_finished(node);
+            if (!root_finished || !m_scanner.IsComplete())
+            {
+                EnableMenuItem(hmenuSub, IDM_RESCAN, MF_BYCOMMAND|MF_GRAYED);
+                EnableMenuItem(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+                EnableMenuItem(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+            }
+
             if (file)
+            {
+                DeleteMenu(hmenuSub, IDM_RESCAN, MF_BYCOMMAND);
                 DeleteMenu(hmenuSub, IDM_OPEN_DIRECTORY, MF_BYCOMMAND);
+            }
             if (file || !parent)
             {
                 DeleteMenu(hmenuSub, IDM_HIDE_DIRECTORY, MF_BYCOMMAND);
@@ -1541,7 +1636,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             }
             if (dir)
             {
-                if (!is_root_finished(node) || dir->IsRecycleBin() || !parent)
+                if (dir->IsRecycleBin() || !parent)
                 {
                     DeleteMenu(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND);
                     DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
@@ -1600,6 +1695,10 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             const UINT idm = TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr);
             switch (idm)
             {
+            case IDM_RESCAN:
+                if (dir)
+                    Rescan(std::static_pointer_cast<DirNode>(node));
+                break;
             case IDM_OPEN_DIRECTORY:
             case IDM_OPEN_FILE:
                 if (node)
@@ -1641,7 +1740,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 g_use_compressed_size = !g_use_compressed_size;
                 WriteRegLong(TEXT("UseCompressedSize"), g_use_compressed_size);
                 if (IDYES == MessageBox(m_hwnd, TEXT("The setting will take effect in the next scan.\n\nRescan now?"), TEXT("Confirm Rescan"), MB_YESNOCANCEL|MB_ICONQUESTION))
-                    Rescan();
+                    Refresh(true/*all*/);
                 break;
             case IDM_OPTION_FREESPACE:
                 g_show_free_space = !g_show_free_space;
@@ -1671,7 +1770,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     {
                         g_fake_data = fake_data;
                         WriteRegLong(TEXT("DbgFakeData"), g_fake_data);
-                        Rescan();
+                        Refresh(true/*all*/);
                     }
                 }
                 break;
@@ -1715,7 +1814,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         switch (wParam)
         {
         case VK_F5:
-            Rescan();
+            Refresh();
             break;
         case VK_UP:
             Up();
@@ -1782,7 +1881,7 @@ void MainWindow::OnCommand(WORD id, HWND hwndCtrl, WORD code)
     switch (id)
     {
     case IDM_REFRESH:
-        Rescan();
+        Refresh();
         break;
     case IDM_UP:
         Up();
