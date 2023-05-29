@@ -61,6 +61,13 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
     if (path.empty())
         return nullptr;
 
+    // Everyone knows about "*" and "?" wildcards.  But Windows actually
+    // supports FIVE wildcards!
+    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
+    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtldoesnamecontainwildcards
+    if (wcspbrk(path.c_str(), TEXT("*?<>\"")))
+        return nullptr;
+
     ensure_separator(path);
 
     std::shared_ptr<DirNode> root;

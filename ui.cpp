@@ -352,10 +352,9 @@ std::vector<std::shared_ptr<DirNode>> ScannerThread::Start(int argc, const WCHAR
                 roots.emplace_back(root);
         }
     }
-    else
-    {
+
+    if (roots.empty())
         roots.emplace_back(MakeRoot(nullptr));
-    }
 
     m_fullscan = true;
     StartInternal(roots, true);
