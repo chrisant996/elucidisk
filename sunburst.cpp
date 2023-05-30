@@ -1133,6 +1133,9 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
 
 void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight)
 {
+    if (m_start_angles.empty())
+        return;
+
     SPI<ID2D1Geometry> spHighlight;
 
     // Two passes, so files are "beneath" everything else.
@@ -1153,6 +1156,7 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
 
     assert(m_bounds.left < m_bounds.right);
     assert(m_bounds.top < m_bounds.bottom);
+    assert(m_start_angles.size() == m_roots.size());
 
     // FUTURE: Direct2D documentation recommends caching a bitmap for performance,
     // instead of caching geometries.  The highlight can be calculated on the fly
