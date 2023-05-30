@@ -63,15 +63,6 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
         root = std::make_shared<DirNode>(path.c_str());
     }
 
-#ifdef DEBUG
-    if (!g_fake_data)
-#endif
-    {
-        DriveNode* drive = root->AsDrive();
-        if (drive)
-            drive->AddFreeSpace();
-    }
-
     return root;
 }
 
@@ -171,6 +162,16 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
 
 void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, volatile LONG* current_generation, ScanFeedback& feedback)
 {
+    if (root->AsRecycleBin())
+    {
+        std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+
+        feedback.current = root;
+        root->AsRecycleBin()->UpdateRecycleBin(feedback.mutex);
+        root->Finish();
+        return;
+    }
+
     DriveNode* drive = (root->AsDrive() && !is_subst(root->GetName())) ? root->AsDrive() : nullptr;
 
     std::wstring find;
@@ -269,7 +270,17 @@ LResetFeedbackInterval:
     }
 
     if (this_generation == *current_generation && drive)
+    {
         drive->AddRecycleBin();
+        const auto recycle = drive->GetRecycleBin();
+
+        if (recycle)
+        {
+            feedback.current = recycle;
+            recycle->UpdateRecycleBin(feedback.mutex);
+            recycle->Finish();
+        }
+    }
 
     root->Finish();
 }

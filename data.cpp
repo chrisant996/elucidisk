@@ -205,6 +205,14 @@ bool get_drivelike_prefix(const WCHAR* _path, std::wstring& out)
     return false;
 }
 
+static std::wstring make_free_space_name(const WCHAR* drive)
+{
+    std::wstring name;
+    name.append(TEXT("Free on "));
+    name.append(drive);
+    return name;
+}
+
 #ifdef DEBUG
 static volatile LONG s_cNodes = 0;
 LONG CountNodes() { return s_cNodes; }
@@ -413,7 +421,7 @@ void DirNode::UpdateRecycleBinMetadata(ULONGLONG size)
     GetParent()->m_size += m_size;
 }
 
-void RecycleBinNode::UpdateRecycleBin()
+void RecycleBinNode::UpdateRecycleBin(std::recursive_mutex& ui_mutex)
 {
     assert(!IsFake());
 
@@ -424,7 +432,15 @@ void RecycleBinNode::UpdateRecycleBin()
     if (SUCCEEDED(SHQueryRecycleBin(drive, &info)))
         size = info.i64Size;
 
+    std::lock_guard<std::recursive_mutex> lock(ui_mutex);
     UpdateRecycleBinMetadata(size);
+}
+
+FreeSpaceNode::FreeSpaceNode(const WCHAR* drive, ULONGLONG free, ULONGLONG total, const std::shared_ptr<DirNode>& parent)
+: Node(make_free_space_name(drive).c_str(), parent)
+, m_free(free)
+, m_total(total)
+{
 }
 
 void DriveNode::AddRecycleBin()
@@ -441,9 +457,6 @@ void DriveNode::AddRecycleBin()
 
         m_recycle = std::make_shared<RecycleBinNode>(parent);
     }
-
-    m_recycle->UpdateRecycleBin();
-    m_recycle->Finish();
 }
 
 void DriveNode::AddFreeSpace()
@@ -470,15 +483,11 @@ void DriveNode::AddFreeSpace()
 
 void DriveNode::AddFreeSpace(ULONGLONG free, ULONGLONG total)
 {
-    std::wstring name;
-    name.append(TEXT("Free on "));
-    name.append(GetName());
-
     const std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
     {
         std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
 
-        m_free = std::make_shared<FreeSpaceNode>(name.c_str(), free, total, parent);
+        m_free = std::make_shared<FreeSpaceNode>(GetName(), free, total, parent);
     }
 }
 

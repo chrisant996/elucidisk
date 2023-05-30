@@ -113,14 +113,14 @@ class RecycleBinNode : public DirNode
 public:
                             RecycleBinNode(const std::shared_ptr<DirNode>& parent) : DirNode(TEXT("Recycle Bin"), parent) {}
     virtual RecycleBinNode* AsRecycleBin() { return this; }
-    void                    UpdateRecycleBin();
+    void                    UpdateRecycleBin(std::recursive_mutex& ui_mutex);
     bool                    IsRecycleBin() const override { return true; }
 };
 
 class FreeSpaceNode : public Node
 {
 public:
-                            FreeSpaceNode(const WCHAR* name, ULONGLONG free, ULONGLONG total, const std::shared_ptr<DirNode>& parent) : Node(name, parent), m_free(free), m_total(total) {}
+                            FreeSpaceNode(const WCHAR* drive, ULONGLONG free, ULONGLONG total, const std::shared_ptr<DirNode>& parent);
     const FreeSpaceNode*    AsFreeSpace() const override { return this; }
     ULONGLONG               GetFreeSize() const { return m_free; }
     ULONGLONG               GetUsedSize() const { return m_total - m_free; }

@@ -300,6 +300,44 @@ FLOAT MakeFolderIcon(DirectHwndRenderTarget& target, RECT rc, const DpiScaler& d
 }
 
 //----------------------------------------------------------------------------
+// Hourglass.
+
+class Hourglass
+{
+public:
+                    Hourglass(bool now=true) { if (now) Begin(); }
+                    ~Hourglass() { if (m_hourglass) End(); }
+    void            Begin();
+    void            End();
+private:
+    bool            m_hourglass = false;
+    static int      s_count;
+    static HCURSOR  s_old;
+};
+
+int Hourglass::s_count = 0;
+HCURSOR Hourglass::s_old = 0;
+
+void Hourglass::Begin()
+{
+    assert(!m_hourglass);
+    if (s_count++ == 0)
+        s_old = SetCursor(LoadCursor(0, IDC_WAIT));
+    ShowCursor(true);
+    m_hourglass = true;
+}
+
+void Hourglass::End()
+{
+    assert(m_hourglass);
+    assert(s_count);
+    if (--s_count == 0)
+        SetCursor(s_old);
+    ShowCursor(false);
+    m_hourglass = false;
+}
+
+//----------------------------------------------------------------------------
 // ScannerThread.
 
 class ScannerThread
@@ -327,6 +365,7 @@ private:
     size_t                  m_cursor = 0;
     std::vector<std::shared_ptr<DirNode>> m_roots;
     bool                    m_fullscan = false;
+    bool                    m_new_roots = false;
     std::unique_ptr<std::thread> m_thread;
 
     std::recursive_mutex&   m_ui_mutex;
@@ -378,7 +417,8 @@ void ScannerThread::StartInternal(const std::vector<std::shared_ptr<DirNode>>& r
         m_thread = std::make_unique<std::thread>(ThreadProc, this);
 
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::mutex> lock1(m_mutex);
+        std::lock_guard<std::recursive_mutex> lock2(m_ui_mutex);
 
         if (fullscan)
         {
@@ -390,6 +430,8 @@ void ScannerThread::StartInternal(const std::vector<std::shared_ptr<DirNode>>& r
         {
             m_roots.insert(m_roots.begin() + m_cursor, roots.begin(), roots.end());
         }
+
+        m_new_roots = true;
 
         InterlockedIncrement(&m_generation);
     }
@@ -404,10 +446,15 @@ void ScannerThread::Stop()
         SetEvent(m_hStop);
         InterlockedIncrement(&m_generation);
         m_thread->join();
+
+        std::lock_guard<std::mutex> lock1(m_mutex);
+        std::lock_guard<std::recursive_mutex> lock2(m_ui_mutex);
+
         m_current.reset();
         m_roots.clear();
         m_cursor = 0;
         m_fullscan = false;
+        m_new_roots = false;
         ResetEvent(m_hStop);
     }
 }
@@ -464,11 +511,38 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
                         }
                     }
 
+                    std::lock_guard<std::recursive_mutex> lock2(pThis->m_ui_mutex);
+
                     pThis->m_current.reset();
                     pThis->m_roots.clear();
                     pThis->m_cursor = 0;
                     pThis->m_fullscan = false;
                     break;
+                }
+
+                if (pThis->m_new_roots)
+                {
+                    pThis->m_new_roots = false;
+                    for (const auto& root : pThis->m_roots)
+                    {
+#ifdef DEBUG
+                        if (root->IsFake())
+                            continue;
+#endif
+                        DriveNode* drive = root->AsDrive();
+                        if (drive)
+                        {
+                            std::lock_guard<std::recursive_mutex> lock2(pThis->m_ui_mutex);
+
+                            // Create a temporary fake node purely for
+                            // progress purposes, since the drive might not
+                            // actually get a FreeSpaceNode if getting its
+                            // free space fails.
+                            pThis->m_current = std::make_shared<FreeSpaceNode>(drive->GetName(), 0, 0, nullptr);
+                        }
+
+                        drive->AddFreeSpace();
+                    }
                 }
 
                 root = pThis->m_roots[pThis->m_cursor++];
@@ -1761,9 +1835,11 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             case IDM_EMPTY_RECYCLEBIN:
                 if (recycle)
                 {
+                    Hourglass hg;
+
                     path = recycle->GetParent()->GetName();
                     if (ShellEmptyRecycleBin(m_hwnd, path.c_str()))
-                        recycle->UpdateRecycleBin();
+                        recycle->UpdateRecycleBin(m_ui_mutex);
                 }
                 break;
 
@@ -2107,8 +2183,8 @@ void MainWindow::UpdateRecycleBin(const std::shared_ptr<RecycleBinNode>& recycle
         return;
 
     {
-        std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
-        recycle->UpdateRecycleBin();
+        Hourglass hg;
+        recycle->UpdateRecycleBin(m_ui_mutex);
     }
 
     InvalidateRect(m_hwnd, nullptr, false);
