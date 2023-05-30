@@ -625,6 +625,7 @@ public:
     const WCHAR*            GetHoverDescription();
     void                    OnMouseMessage(UINT msg, const POINT* pt);
     void                    OnCancelMode();
+    void                    SuppressDescriptionTemporarily(UINT id);
 
 protected:
     int                     HitTest(const POINT* pt) const;
@@ -636,6 +637,7 @@ private:
     std::vector<Button>     m_buttons;
     int                     m_hover = -1;
     int                     m_pressed = -1;
+    int                     m_suppress_desc = -1;
     DpiScaler               m_dpi;
 };
 
@@ -726,7 +728,7 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
 
 const WCHAR* Buttons::GetHoverDescription()
 {
-    return (m_hover >= 0 && m_hover < m_buttons.size()) ? m_buttons[m_hover].m_desc.c_str() : nullptr;
+    return (m_suppress_desc < 0 && m_hover >= 0 && m_hover < m_buttons.size()) ? m_buttons[m_hover].m_desc.c_str() : nullptr;
 }
 
 void Buttons::OnMouseMessage(UINT msg, const POINT* pt)
@@ -783,6 +785,12 @@ void Buttons::InvalidateButton(int index) const
 
 void Buttons::SetHover(int hover, int pressed)
 {
+    if (hover != m_suppress_desc)
+    {
+        // Stop suppressing once the mouse moves away from the button.
+        m_suppress_desc = -1;
+    }
+
     if (m_hover != hover || m_pressed != pressed)
     {
         InvalidateButton(m_hover);
@@ -798,6 +806,19 @@ void Buttons::SetHover(int hover, int pressed)
         track.hwndTrack = m_hwnd;
         track.dwHoverTime = HOVER_DEFAULT;
         _TrackMouseEvent(&track);
+    }
+}
+
+void Buttons::SuppressDescriptionTemporarily(const UINT id)
+{
+    for (size_t index = m_buttons.size(); index--;)
+    {
+        if (id == m_buttons[index].m_id)
+        {
+            if (int(index) == m_hover)
+                m_suppress_desc = int(index);
+            break;
+        }
     }
 }
 
@@ -1895,15 +1916,19 @@ void MainWindow::OnCommand(WORD id, HWND hwndCtrl, WORD code)
     switch (id)
     {
     case IDM_REFRESH:
+        m_buttons.SuppressDescriptionTemporarily(id);
         Refresh();
         break;
     case IDM_UP:
+        m_buttons.SuppressDescriptionTemporarily(id);
         Up();
         break;
     case IDM_BACK:
+        m_buttons.SuppressDescriptionTemporarily(id);
         Back();
         break;
     case IDM_SUMMARY:
+        m_buttons.SuppressDescriptionTemporarily(id);
         Summary();
         break;
     case IDM_APPWIZ:
@@ -1926,6 +1951,7 @@ void MainWindow::OnCommand(WORD id, HWND hwndCtrl, WORD code)
             if (index < m_drives.size())
             {
                 const WCHAR* drive = m_drives[index].c_str();
+                m_buttons.SuppressDescriptionTemporarily(id);
                 Scan(1, &drive, false);
             }
         }
