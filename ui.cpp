@@ -748,15 +748,19 @@ void Buttons::OnMouseMessage(UINT msg, const POINT* pt)
     case WM_LBUTTONUP:
         if (m_hover >= 0 && m_hover < m_buttons.size() && m_hover == m_pressed)
             SendMessage(m_hwnd, WM_COMMAND, GET_WM_COMMAND_MPS(m_buttons[m_hover].m_id, m_hwnd, 0));
+        InvalidateButton(m_pressed);
         m_pressed = -1;
-        InvalidateButton(m_hover);
         break;
     }
 }
 
 void Buttons::OnCancelMode()
 {
-    SetHover(-1, -1);
+    if (m_pressed >= 0)
+    {
+        InvalidateButton(m_pressed);
+        m_pressed = -1;
+    }
 }
 
 int Buttons::HitTest(const POINT* pt) const
