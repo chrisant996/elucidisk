@@ -268,7 +268,7 @@ LResetFeedbackInterval:
         Scan(dir, this_generation, current_generation, feedback);
     }
 
-    if (drive)
+    if (this_generation == *current_generation && drive)
         drive->AddRecycleBin();
 
     root->Finish();
