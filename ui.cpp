@@ -320,16 +320,17 @@ protected:
     static void             ThreadProc(ScannerThread* pThis);
 
 private:
+    std::mutex              m_mutex;
     HANDLE                  m_hWake;
     HANDLE                  m_hStop;
     volatile LONG           m_generation = 0;
     size_t                  m_cursor = 0;
-    std::shared_ptr<Node>   m_current;
     std::vector<std::shared_ptr<DirNode>> m_roots;
     bool                    m_fullscan = false;
     std::unique_ptr<std::thread> m_thread;
-    std::mutex              m_mutex;
+
     std::recursive_mutex&   m_ui_mutex;
+    std::shared_ptr<Node>   m_current;
 };
 
 ScannerThread::ScannerThread(std::recursive_mutex& ui_mutex)
