@@ -171,6 +171,8 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
 
 void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, volatile LONG* current_generation, ScanFeedback& feedback)
 {
+    DriveNode* drive = (root->AsDrive() && !is_subst(root->GetName())) ? root->AsDrive() : nullptr;
+
     std::wstring find;
     root->GetFullPath(find);
     ensure_separator(find);
@@ -207,6 +209,8 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 if (!wcscmp(fd.cFileName, TEXT(".")) || !wcscmp(fd.cFileName, TEXT("..")))
+                    continue;
+                if (drive && !wcsicmp(fd.cFileName, TEXT("$recycle.bin")))
                     continue;
 
                 dirs.emplace_back(root->AddDir(fd.cFileName));
@@ -264,7 +268,6 @@ LResetFeedbackInterval:
         Scan(dir, this_generation, current_generation, feedback);
     }
 
-    DriveNode* drive = root->AsDrive();
     if (drive)
         drive->AddRecycleBin();
 
