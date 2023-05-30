@@ -45,7 +45,7 @@ void skip_nonseparators(const WCHAR*& path)
         ++path;
 }
 
-static void build_full_path(std::wstring& path, const Node* node)
+static void build_full_path(std::wstring& path, const std::shared_ptr<const Node>& node)
 {
     if (!node)
     {
@@ -60,14 +60,18 @@ static void build_full_path(std::wstring& path, const Node* node)
         const DirNode* dir = node->AsDir();
         if (dir && dir->IsRecycleBin())
         {
+            const auto parent = dir->GetParent();
             path = dir->GetName();
-            path.append(TEXT(" on "));
-            path.append(dir->GetParent()->GetName());
-            strip_separator(path);
+            if (parent)
+            {
+                path.append(TEXT(" on "));
+                path.append(parent->GetName());
+                strip_separator(path);
+            }
         }
         else
         {
-            build_full_path(path, node->GetParent().get());
+            build_full_path(path, node->GetParent());
             path.append(node->GetName());
             if (dir)
                 ensure_separator(path);
@@ -78,7 +82,8 @@ static void build_full_path(std::wstring& path, const Node* node)
 bool is_root_finished(const std::shared_ptr<Node>& node)
 {
     DirNode* dir = node->AsDir();
-    for (DirNode* parent = dir ? dir : node->GetParent().get(); parent; parent = parent->GetParent().get())
+    std::shared_ptr<DirNode> parent;
+    for (parent = dir ? std::static_pointer_cast<DirNode>(node) : node->GetParent(); parent; parent = parent->GetParent())
     {
         if (!parent->IsFinished())
             return false;
@@ -232,7 +237,8 @@ bool Node::IsParentFinished() const
 
 void Node::GetFullPath(std::wstring& out) const
 {
-    build_full_path(out, this);
+    std::shared_ptr<const Node> self = shared_from_this();
+    build_full_path(out, self);
 }
 
 std::vector<std::shared_ptr<DirNode>> DirNode::CopyDirs(bool include_recycle) const
