@@ -6,27 +6,6 @@
 #include "scan.h"
 #include <shellapi.h>
 
-static void skip_separators(const WCHAR*& path)
-{
-    while (is_separator(*path))
-        ++path;
-}
-
-static unsigned int has_io_prefix(const WCHAR* path)
-{
-    const WCHAR* p = path;
-    if (!is_separator(*(p++)))
-        return 0;
-    if (!is_separator(*(p++)))
-        return 0;
-    if (*(p++) != '?')
-        return 0;
-    if (!is_separator(*(p++)))
-        return 0;
-    skip_separators(p);
-    return static_cast<unsigned int>(p - path);
-}
-
 static void get_drive(const WCHAR* path, std::wstring& out)
 {
     out.clear();

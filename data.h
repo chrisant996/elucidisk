@@ -150,8 +150,13 @@ private:
 inline bool is_separator(const WCHAR ch) { return ch == '/' || ch == '\\'; }
 void ensure_separator(std::wstring& path);
 void strip_separator(std::wstring& path);
+void skip_separators(const WCHAR*& path);
+void skip_nonseparators(const WCHAR*& path);
+unsigned int has_io_prefix(const WCHAR* path);
 
 bool is_root_finished(const std::shared_ptr<Node>& node);
 bool is_drive(const WCHAR* path);
 bool is_subst(const WCHAR* path);
+bool is_unc(const WCHAR* path, const WCHAR** past_unc);
+bool get_drivelike_prefix(const WCHAR* path, std::wstring&out);
 

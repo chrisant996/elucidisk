@@ -39,10 +39,16 @@ enum WriteTextOptions
     WTO_RIGHT_ALIGN         = 0x0010,
     WTO_BOTTOM_ALIGN        = 0x0020,
 
-    WTO_UNDERLINE           = 0x4000,
-    WTO_PATH_ELLIPSIS       = 0x8000,
+    WTO_UNDERLINE           = 0x8000,
 };
 DEFINE_ENUM_FLAG_OPERATORS(WriteTextOptions);
+
+struct Shortened
+{
+    std::wstring m_text;
+    FLOAT m_extent = 0.0f;
+    size_t m_orig_offset = 0;
+};
 
 class DirectHwndRenderTarget
 {
@@ -108,6 +114,7 @@ public:
     PathTextRenderer*       ArcTextRenderer() const { return m_resources->m_spPathTextRenderer; }
     FLOAT                   ArcFontSize() const { return m_resources->m_arcFontSize; }
 
+    bool                    ShortenText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, FLOAT target, Shortened& out, int ellipsis=1);
     bool                    MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout=nullptr);
     bool                    MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const std::wstring& text, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout=nullptr);
     bool                    WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT y, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, WriteTextOptions options=WTO_NONE, IDWriteTextLayout* pLayout=nullptr);

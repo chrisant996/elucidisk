@@ -33,6 +33,18 @@ void strip_separator(std::wstring& path)
         path.resize(path.length() - 1);
 }
 
+void skip_separators(const WCHAR*& path)
+{
+    while (is_separator(*path))
+        ++path;
+}
+
+void skip_nonseparators(const WCHAR*& path)
+{
+    while (*path && !is_separator(*path))
+        ++path;
+}
+
 static void build_full_path(std::wstring& path, const Node* node)
 {
     if (!node)
@@ -90,6 +102,100 @@ bool is_subst(const WCHAR* path)
     WCHAR szTargetPath[1024];
     if (QueryDosDevice(device.c_str(), szTargetPath, _countof(szTargetPath)))
         return (wcsnicmp(szTargetPath, TEXT("\\??\\"), 4) == 0);
+
+    return false;
+}
+
+unsigned int has_io_prefix(const WCHAR* path)
+{
+    const WCHAR* p = path;
+    if (!is_separator(*(p++)))
+        return 0;
+    if (!is_separator(*(p++)))
+        return 0;
+    if (*(p++) != '?')
+        return 0;
+    if (!is_separator(*(p++)))
+        return 0;
+    skip_separators(p);
+    return static_cast<unsigned int>(p - path);
+}
+
+bool is_unc(const WCHAR* path, const WCHAR** past_unc)
+{
+    if (!is_separator(path[0]) || !is_separator(path[1]))
+        return false;
+
+    const WCHAR* const in = path;
+    skip_separators(path);
+    size_t leading = static_cast<size_t>(path - in);
+
+    // Check for device namespace.
+    if (path[0] == '.' && (!path[1] || is_separator(path[1])))
+        return false;
+
+    // Check for \\?\UNC\ namespace.
+    if (leading == 2 && path[0] == '?' && is_separator(path[1]))
+    {
+        ++path;
+        skip_separators(path);
+
+        if (*path != 'U' && *path != 'u')
+            return false;
+        ++path;
+        if (*path != 'N' && *path != 'n')
+            return false;
+        ++path;
+        if (*path != 'C' && *path != 'c')
+            return false;
+        ++path;
+
+        if (!is_separator(*path))
+            return false;
+        skip_separators(path);
+    }
+
+    if (past_unc)
+    {
+        // Skip server name.
+        skip_nonseparators(path);
+        while (*path && !is_separator(*path))
+            ++path;
+
+        // Skip separator.
+        skip_separators(path);
+
+        // Skip share name.
+        skip_nonseparators(path);
+
+        *past_unc = path;
+    }
+    return true;
+}
+
+bool get_drivelike_prefix(const WCHAR* _path, std::wstring& out)
+{
+    const WCHAR* path = _path;
+
+    const WCHAR* past_unc;
+    if (is_unc(path, &past_unc))
+    {
+        out.clear();
+        out.append(path, past_unc - path);
+        return true;
+    }
+
+    unsigned int iop = has_io_prefix(path);
+    if (iop > 0)
+        path += iop;
+
+    if (path[0] && path[1] == ':' && unsigned(towlower(path[0]) - 'a') <= ('z' - 'a'))
+    {
+        out.clear();
+        out.append(_path, iop);
+        out.append(path, 2 + is_separator(path[2]));
+        return true;
+    }
 
     return false;
 }

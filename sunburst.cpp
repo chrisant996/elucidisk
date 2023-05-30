@@ -43,6 +43,9 @@ constexpr int c_retrograde = 1;
 constexpr int c_retrograde_depths = 10;
 #endif
 
+constexpr WCHAR c_ellipsis[] = TEXT("...");
+constexpr size_t c_ellipsis_len = _countof(c_ellipsis) - 1;
+
 HRESULT InitializeD2D()
 {
     return D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED, __uuidof(ID2D1Factory), 0, reinterpret_cast<void**>(&s_pD2DFactory));
@@ -311,6 +314,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
             m_fontSize,
             TEXT("en-US"),
             &m_spTextFormat));
+    m_spTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
 
     m_centerFontSize = FLOAT(-dpi.PointSizeToHeight(c_centerfontsize));
     ERRRET(m_spDWriteFactory->CreateTextFormat(
@@ -322,6 +326,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
             m_centerFontSize,
             TEXT("en-US"),
             &m_spCenterTextFormat));
+    m_spCenterTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
 
     m_arcFontSize = FLOAT(-dpi.PointSizeToHeight(c_arcfontsize));
     ERRRET(m_spDWriteFactory->CreateTextFormat(
@@ -333,6 +338,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
             m_arcFontSize,
             TEXT("en-US"),
             &m_spArcTextFormat));
+    m_spArcTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
 
     ERRRET(m_spContext.HrQuery(m_spTarget));
     m_spContext->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
@@ -404,6 +410,68 @@ void DirectHwndRenderTarget::ReleaseDeviceResources()
     m_hwnd = 0;
 }
 
+static void SetStringWithEllipsis(Shortened& out, const WCHAR* in, size_t len, size_t keep, int ellipsis=1)
+{
+    if (len && IS_HIGH_SURROGATE(in[len - 1]))
+        len--;
+    out.m_text.clear();
+    if (ellipsis < 0)
+    {
+        out.m_text.append(c_ellipsis);
+        out.m_text.append(in + len - keep);
+    }
+    else
+    {
+        out.m_text.append(in, keep);
+        if (ellipsis > 0)
+            out.m_text.append(c_ellipsis);
+    }
+}
+
+bool DirectHwndRenderTarget::ShortenText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, const size_t len, FLOAT target, Shortened& out, int ellipsis)
+{
+    if (len <= 0)
+        return false;
+
+#ifdef DEBUG
+    {
+        D2D1_SIZE_F size;
+        MeasureText(format, rect, text, len, size);
+        assert(size.width > rect.right - rect.left);
+    }
+#endif
+
+    out.m_text.clear();
+    out.m_extent = 0.0f;
+
+    size_t lo = 0;
+    size_t hi = len - 1;
+    Shortened tmp;
+    while (lo < hi)
+    {
+        const size_t mid = (hi + lo) / 2;
+
+        D2D1_SIZE_F size;
+        SetStringWithEllipsis(tmp, text, len, mid, ellipsis);
+        if (!MeasureText(format, rect, tmp.m_text, size))
+            return false;
+
+        if (size.width < target && tmp.m_extent < size.width)
+        {
+            out.m_text = std::move(tmp.m_text);
+            out.m_extent = size.width;
+            out.m_orig_offset = mid;
+        }
+
+        if (size.width < target)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+
+    return true;
+}
+
 bool DirectHwndRenderTarget::MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const std::wstring& text, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout)
 {
     return MeasureText(format, rect, text.c_str(), text.length(), size, ppLayout);
@@ -452,8 +520,6 @@ bool DirectHwndRenderTarget::WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT
         if (FAILED(pLayout->GetMetrics(&textMetrics)))
             return false;
 
-// TODO: Path ellipsis; probably using a custom renderer is most efficient for
-// finding whether/where to inject an ellipsis, and how much text to discard.
         const auto size = D2D1::SizeF(FLOAT(ceil(textMetrics.width)), FLOAT(ceil(textMetrics.height)));
         if (options & WTO_HCENTER)
             x = std::max<FLOAT>(0.0f, FLOAT(floor(rect.left + (xExtent - size.width) / 2)));

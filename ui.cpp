@@ -1216,16 +1216,43 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
     rect.top += padding;
     rect.bottom -= padding;
 
-    D2D1_SIZE_F size;
     D2D1_RECT_F rectLine = rect;
+    D2D1_SIZE_F size;
 
     SPI<IDWriteTextLayout> spTextLayout;
     IDWriteTextFormat* pTextFormat = bold ? t.CenterTextFormat() : t.TextFormat();
-    if (t.MeasureText(pTextFormat, rectLine, text.c_str(), text.length(), size, &spTextLayout))
+    if (m_directRender.MeasureText(pTextFormat, rectLine, text, size) &&
+        size.width > rect.right - rect.left)
     {
-        WriteTextOptions options = bold ? WTO_HCENTER|WTO_PATH_ELLIPSIS : WTO_NONE|WTO_PATH_ELLIPSIS;
-        t.WriteText(pTextFormat, rectLine.left, rectLine.top, rectLine, text, options);
+        if (node)
+        {
+            std::wstring leading;
+            FLOAT leading_extent = 0.0f;
+            if (get_drivelike_prefix(text.c_str(), leading))
+            {
+                if (m_directRender.MeasureText(pTextFormat, rectLine, leading.c_str(), size))
+                    leading_extent = size.width;
+            }
+
+            Shortened shortened;
+            const WCHAR* t = text.c_str() + leading.length();
+            size_t l = text.length() - leading.length();
+            if (m_directRender.ShortenText(pTextFormat, rectLine, t, l, rect.right - rect.left - leading_extent, shortened, -1))
+            {
+                leading.append(shortened.m_text);
+                text = std::move(leading);
+            }
+        }
+        else
+        {
+            Shortened shortened;
+            if (m_directRender.ShortenText(pTextFormat, rectLine, text.c_str(), text.length(), rectLine.right - rectLine.left, shortened))
+                text = std::move(shortened.m_text);
+        }
     }
+
+    const WriteTextOptions options = bold ? WTO_HCENTER|WTO_CLIP : WTO_CLIP;
+    t.WriteText(pTextFormat, rectLine.left, rectLine.top, rectLine, text, options);
 
     rectLine.top += (bold ? t.CenterFontSize() : t.FontSize()) + padding;
 
