@@ -1278,6 +1278,7 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
             show_free = is_free;
         }
         text.append(path);
+        strip_separator(text);
     }
     else if (m_scanner.IsComplete())
     {
@@ -1575,39 +1576,68 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 m_buttons.RenderButtons(m_directRender);
 
                 {
-                    ULONGLONG used = 0;
-                    for (const auto root : m_roots)
-                        used += root->GetEffectiveSize();
+                    std::wstring label;
+                    ULONGLONG bytes = 0;
 
-                    std::wstring text;
-                    std::wstring units;
-                    m_sunburst.FormatSize(used, text, units);
-                    text.append(TEXT(" "));
-                    text.append(units);
+                    if (!m_hover_node)
+                    {
+LShowTotal:
+                        for (const auto root : m_roots)
+                            bytes += root->GetEffectiveSize();
 
-                    std::wstring text2;
-                    if (m_roots.size() > 1)
-                    {
-                        text2 = TEXT("Total");
-                    }
-                    else if (m_roots.size() == 1)
-                    {
-                        for (const auto& drive : m_drives)
+                        if (m_roots.size() > 1)
+                            label = TEXT("Total");
+                        else if (m_roots.size() == 1)
                         {
-                            if (wcsnicmp(drive.c_str(), m_roots[0]->GetName(), drive.length()) == 0)
+                            for (const auto& drive : m_drives)
                             {
-                                text2 = drive;
-                                break;
+                                if (wcsnicmp(drive.c_str(), m_roots[0]->GetName(), drive.length()) == 0)
+                                {
+                                    label = drive;
+                                    break;
+                                }
                             }
                         }
                     }
+                    else if (m_hover_node->AsDir())
+                    {
+                        std::shared_ptr<FreeSpaceNode> free = m_hover_node->AsDir()->GetFreeSpace();
+                        bytes = (free && m_hover_free) ? free->GetFreeSize() : m_hover_node->AsDir()->GetEffectiveSize();
+                        if (free)
+                        {
+                            label = m_hover_free ? TEXT("Free on ") : TEXT("Used on ");
+                            label.append(m_hover_node->GetName());
+                            strip_separator(label);
+                        }
+                    }
+                    else if (m_hover_node->AsFile())
+                        bytes = m_hover_node->AsFile()->GetSize();
+                    else if (m_hover_node->AsFreeSpace())
+                    {
+                        bytes = m_hover_node->AsFreeSpace()->GetFreeSize();
+                        const std::shared_ptr<DirNode> parent = m_hover_node->AsFreeSpace()->GetParent();
+                        if (parent)
+                        {
+                            label = TEXT("Free on ");
+                            label.append(parent->GetName());
+                            strip_separator(label);
+                        }
+                    }
+                    else
+                        goto LShowTotal;
+
+                    std::wstring text;
+                    std::wstring units;
+                    m_sunburst.FormatSize(bytes, text, units);
+                    text.append(TEXT(" "));
+                    text.append(units);
 
                     m_directRender.WriteText(m_directRender.CenterTextFormat(), 0.0f, 0.0f, bounds, text, WTO_HCENTER|WTO_VCENTER|WTO_REMEMBER_METRICS);
-                    if (!text2.empty())
+                    if (!label.empty())
                     {
                         D2D1_RECT_F rectLabel = bounds;
                         rectLabel.bottom = m_directRender.LastTextPosition().y;
-                        m_directRender.WriteText(m_directRender.TextFormat(), 0.0f, 0.0f, rectLabel, text2, WTO_HCENTER|WTO_BOTTOM_ALIGN);
+                        m_directRender.WriteText(m_directRender.TextFormat(), 0.0f, 0.0f, rectLabel, label, WTO_HCENTER|WTO_BOTTOM_ALIGN);
                     }
                 }
 
