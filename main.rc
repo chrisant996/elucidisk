@@ -25,6 +25,7 @@ BEGIN
         MENUITEM "&Rainbow Colors (by angle)", IDM_OPTION_RAINBOW
         MENUITEM "&Heatmap Colors (by size)", IDM_OPTION_HEATMAP
         MENUITEM SEPARATOR
+        MENUITEM "Show Size Comparison &Bar", IDM_OPTION_COMPBAR
         MENUITEM "Show &Names",             IDM_OPTION_NAMES
         MENUITEM "Show &Free Space",        IDM_OPTION_FREESPACE
         MENUITEM "Show &Compressed Sizes",  IDM_OPTION_COMPRESSED

@@ -136,6 +136,12 @@ class Sunburst
         std::shared_ptr<Node> m_node;
     };
 
+    struct HighlightInfo
+    {
+        Arc                 m_arc;
+        SPI<ID2D1Geometry>  m_geometry;
+    };
+
 public:
                             Sunburst();
                             ~Sunburst();
@@ -157,9 +163,10 @@ protected:
     static void             MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert=1.0f);
     std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring);
 #endif
+    void                    AddArcToSink(ID2D1GeometrySink* pSink, bool counter_clockwise, FLOAT start, FLOAT end, const D2D1_POINT_2F& end_point, FLOAT radius);
     bool                    MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, FLOAT inner_radius, FLOAT outer_radius, ID2D1Geometry** ppGeometry);
     void                    DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT radius);
-    void                    RenderRingsInternal(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight, bool files, SPI<ID2D1Geometry>& spHighlight);
+    void                    RenderRingsInternal(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight, bool files, HighlightInfo& highlightInfo);
 
 private:
     DpiScaler               m_dpi;

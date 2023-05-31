@@ -1083,15 +1083,70 @@ inline D2D1_ARC_SIZE GetArcSize(FLOAT start, FLOAT end)
     return (end - start > 180.0f) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
 }
 
+void Sunburst::AddArcToSink(ID2D1GeometrySink* pSink, const bool counter_clockwise, const FLOAT start, const FLOAT end, const D2D1_POINT_2F& end_point, const FLOAT radius)
+{
+    // When start and end points of an arc are identical, D2D gets confused
+    // where to draw the arc, since it's a full circle.  Split into two arcs.
+    const bool split = (start == end || end - start > 270.0f);
+
+    D2D1_ARC_SEGMENT segment;
+    segment.size = D2D1::SizeF(radius, radius);
+    segment.sweepDirection = counter_clockwise ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE;
+
+    if (split)
+    {
+        const FLOAT mid = start + std::min<FLOAT>(359.0f, end - 1.0f - start);
+
+        if (!counter_clockwise)
+        {
+            segment.point = MakePoint(m_center, radius, mid);
+            segment.rotationAngle = start;
+            segment.arcSize = GetArcSize(start, mid);
+            pSink->AddArc(segment);
+
+            segment.point = MakePoint(m_center, radius, end);
+            segment.rotationAngle = mid;
+            segment.arcSize = GetArcSize(mid, end);
+            pSink->AddArc(segment);
+        }
+        else
+        {
+            segment.point = MakePoint(m_center, radius, mid);
+            segment.rotationAngle = mid;
+            segment.arcSize = GetArcSize(mid, end);
+            pSink->AddArc(segment);
+
+            segment.point = MakePoint(m_center, radius, start);
+            segment.rotationAngle = end;
+            segment.arcSize = GetArcSize(start, mid);
+            pSink->AddArc(segment);
+        }
+    }
+    else
+    {
+        if (!counter_clockwise)
+        {
+            segment.point = MakePoint(m_center, radius, end);
+            segment.rotationAngle = start;
+            segment.arcSize = GetArcSize(start, end);
+            pSink->AddArc(segment);
+        }
+        else
+        {
+            segment.point = MakePoint(m_center, radius, start);
+            segment.rotationAngle = end;
+            segment.arcSize = GetArcSize(start, end);
+            pSink->AddArc(segment);
+        }
+    }
+}
+
 bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, const FLOAT inner_radius, const FLOAT outer_radius, ID2D1Geometry** ppGeometry)
 {
     const bool has_line = (start != end) || (inner_radius > 0.0f);
     if (end <= start)
         end += 360.0f;
 
-    // When start and end points of an arc are identical, D2D gets confused
-    // where to draw the arc, since it's a full circle.  Split into two arcs.
-    const bool split = (start == end || end - start > 270.0f);
 
     start += c_rotation;
     end += c_rotation;
@@ -1110,55 +1165,13 @@ bool Sunburst::MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOA
             spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
             spSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_FILLED);
 
-            D2D1_ARC_SEGMENT outer;
-            outer.size = D2D1::SizeF(outer_radius, outer_radius);
-            outer.sweepDirection = D2D1_SWEEP_DIRECTION_CLOCKWISE;
-            if (split)
-            {
-                const FLOAT mid = start + std::min<FLOAT>(359.0f, end - 1.0f - start);
-                outer.point = MakePoint(m_center, outer_radius, mid);
-                outer.rotationAngle = start;
-                outer.arcSize = GetArcSize(start, mid);
-                spSink->AddArc(outer);
-                outer.point = outer_end_point;
-                outer.rotationAngle = mid;
-                outer.arcSize = GetArcSize(mid, end);
-            }
-            else
-            {
-                outer.point = outer_end_point;
-                outer.rotationAngle = start;
-                outer.arcSize = GetArcSize(start, end);
-            }
-            spSink->AddArc(outer);
+            AddArcToSink(spSink, false, start, end, outer_end_point, outer_radius);
 
             if (has_line)
                 spSink->AddLine(inner_end_point);
 
             if (inner_radius > 0.0f)
-            {
-                D2D1_ARC_SEGMENT inner;
-                inner.size = D2D1::SizeF(inner_radius, inner_radius);
-                inner.sweepDirection = D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE;
-                if (split)
-                {
-                    const FLOAT mid = start + std::min<FLOAT>(359.0f, end - 1.0f - start);
-                    inner.point = MakePoint(m_center, inner_radius, mid);
-                    inner.rotationAngle = mid;
-                    inner.arcSize = GetArcSize(mid, end);
-                    spSink->AddArc(inner);
-                    inner.point = inner_start_point;
-                    inner.rotationAngle = end;
-                    inner.arcSize = GetArcSize(start, mid);
-                }
-                else
-                {
-                    inner.point = inner_start_point;
-                    inner.rotationAngle = end;
-                    inner.arcSize = GetArcSize(start, end);
-                }
-                spSink->AddArc(inner);
-            }
+                AddArcToSink(spSink, true, start, end, inner_start_point, inner_radius);
 
             spSink->EndFigure(D2D1_FIGURE_END_CLOSED);
             spSink->Close();
@@ -1207,13 +1220,7 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
             spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
             spSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_HOLLOW);
 
-            D2D1_ARC_SEGMENT outer;
-            outer.size = D2D1::SizeF(radius, radius);
-            outer.sweepDirection = D2D1_SWEEP_DIRECTION_CLOCKWISE;
-            outer.point = outer_end_point;
-            outer.rotationAngle = start;
-            outer.arcSize = GetArcSize(start, end);
-            spSink->AddArc(outer);
+            AddArcToSink(spSink, false, start, end, outer_end_point, radius);
 
             spSink->EndFigure(D2D1_FIGURE_END_OPEN);
             spSink->Close();
@@ -1234,21 +1241,36 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
     if (m_start_angles.empty())
         return;
 
-    SPI<ID2D1Geometry> spHighlight;
+    HighlightInfo highlightInfo;
 
     // Two passes, so files are "beneath" everything else.
 
     SunburstMetrics mx(m_dpi, m_bounds);
-    RenderRingsInternal(target, mx, highlight, true/*files*/, spHighlight);
-    RenderRingsInternal(target, mx, highlight, false/*files*/, spHighlight);
+    RenderRingsInternal(target, mx, highlight, true/*files*/, highlightInfo);
+    RenderRingsInternal(target, mx, highlight, false/*files*/, highlightInfo);
 
     // Hover highlight.
 
-    if (spHighlight && (!highlight->GetParent() || is_root_finished(highlight)))
-        target.Target()->DrawGeometry(spHighlight, target.LineBrush(), mx.stroke * 2.0f, target.BevelStrokeStyle());
+    if (highlightInfo.m_geometry && (!highlight->GetParent() || is_root_finished(highlight)))
+    {
+        if (g_show_comparison_bar && highlight->GetParent() && highlightInfo.m_arc.m_node)
+        {
+            SPI<ID2D1Geometry> spCompBar;
+            const FLOAT n = FLOAT(m_dpi.Scale(4));
+            const FLOAT outer_radius = mx.center_radius - n;
+            const FLOAT inner_radius = outer_radius - n;
+            MakeArcGeometry(target, highlightInfo.m_arc.m_start, highlightInfo.m_arc.m_end, inner_radius, outer_radius, &spCompBar);
+
+            target.FillBrush()->SetColor(MakeColor(highlightInfo.m_arc, 0, true));
+            target.Target()->FillGeometry(spCompBar, target.FillBrush());
+            target.Target()->DrawGeometry(spCompBar, target.LineBrush(), mx.stroke * 0.66f, target.BevelStrokeStyle());
+        }
+
+        target.Target()->DrawGeometry(highlightInfo.m_geometry, target.LineBrush(), mx.stroke * 2.5f, target.BevelStrokeStyle());
+    }
 }
 
-void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight, bool files, SPI<ID2D1Geometry>& spHighlight)
+void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight, bool files, HighlightInfo& highlightInfo)
 {
     ID2D1RenderTarget* pTarget = target.Target();
 
@@ -1362,8 +1384,9 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
 
                 if (highlight == m_roots[ii])
                 {
-                    spHighlight.Release();
-                    if (SUCCEEDED(MakeArcGeometry(target, start, end, 0.0f, mx.center_radius, &spHighlight)))
+                    highlightInfo.m_arc.m_node.reset();
+                    highlightInfo.m_geometry.Release();
+                    if (SUCCEEDED(MakeArcGeometry(target, start, end, 0.0f, mx.center_radius, &highlightInfo.m_geometry)))
                         break;
                 }
 
@@ -1402,10 +1425,9 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
                 continue;
 
             SPI<ID2D1Geometry> spGeometry;
+            const bool isHighlight = is_highlight(highlight, arc.m_node);
             if (SUCCEEDED(MakeArcGeometry(target, arc.m_start, arc.m_end, inner_radius, outer_radius, &spGeometry)))
             {
-                const bool isHighlight = is_highlight(highlight, arc.m_node);
-
                 pFillBrush->SetColor(MakeColor(arc, depth, isHighlight));
 
                 pTarget->FillGeometry(spGeometry, pFillBrush);
@@ -1415,7 +1437,10 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
                     DrawArcText(target, arc, arctext_radius);
 
                 if (isHighlight)
-                    spHighlight.Set(spGeometry);
+                {
+                    highlightInfo.m_arc = arc;
+                    highlightInfo.m_geometry.Set(spGeometry);
+                }
             }
         }
 

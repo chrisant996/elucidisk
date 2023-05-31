@@ -1952,6 +1952,8 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
         CheckMenuItem(hmenuSub, IDM_OPTION_FREESPACE, MF_BYCOMMAND|MF_CHECKED);
     if (g_show_names)
         CheckMenuItem(hmenuSub, IDM_OPTION_NAMES, MF_BYCOMMAND|MF_CHECKED);
+    if (g_show_comparison_bar)
+        CheckMenuItem(hmenuSub, IDM_OPTION_COMPBAR, MF_BYCOMMAND|MF_CHECKED);
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
 #ifdef DEBUG
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
@@ -2050,6 +2052,11 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
     case IDM_OPTION_NAMES:
         g_show_names = !g_show_names;
         WriteRegLong(TEXT("ShowNames"), g_show_names);
+        InvalidateRect(m_hwnd, nullptr, false);
+        break;
+    case IDM_OPTION_COMPBAR:
+        g_show_comparison_bar = !g_show_comparison_bar;
+        WriteRegLong(TEXT("ShowComparisonBar"), g_show_comparison_bar);
         InvalidateRect(m_hwnd, nullptr, false);
         break;
 
