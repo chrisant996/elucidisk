@@ -209,6 +209,8 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
 
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                    continue;
                 if (!wcscmp(fd.cFileName, TEXT(".")) || !wcscmp(fd.cFileName, TEXT("..")))
                     continue;
                 if (drive && !wcsicmp(fd.cFileName, TEXT("$recycle.bin")))
