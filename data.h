@@ -47,6 +47,8 @@ public:
     virtual const DriveNode* AsDrive() const { return nullptr; }
     void                    SetCompressed(bool compressed=true) { m_compressed = compressed; }
     bool                    IsCompressed() const { return m_compressed; }
+    void                    SetSparse(bool sparse=true) { m_sparse = sparse; }
+    bool                    IsSparse() const { return m_sparse; }
     virtual bool            IsRecycleBin() const { return false; }
     virtual bool            IsDrive() const { return false; }
 #ifdef DEBUG
@@ -56,6 +58,7 @@ protected:
     const std::weak_ptr<DirNode> m_parent;
     const std::wstring      m_name;
     bool                    m_compressed = false;
+    bool                    m_sparse = false;
 #ifdef DEBUG
     const bool              m_fake = false;
 #endif

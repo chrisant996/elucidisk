@@ -1385,17 +1385,21 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
             D2D1_COLOR_F oldColor = t.TextBrush()->GetColor();
             m_sunburst.FormatSize(bytes, text, units);
 
-            if (node->IsCompressed())
+            if (node->IsSparse() || node->IsCompressed())
                 t.TextBrush()->SetColor(D2D1::ColorF(0x0033ff));
 
             rectNumber = rectLine;
             rectNumber.right = FLOAT(m_cxNumberArea);
             t.WriteText(t.TextFormat(), 0.0f, rectNumber.top, rectNumber, text, WTO_RIGHT_ALIGN);
-            if (node->IsCompressed())
+            if (node->IsSparse() && node->IsCompressed())
+                units.append(TEXT(" sparse, compressed"));
+            else if (node->IsSparse())
+                units.append(TEXT(" sparse"));
+            else if (node->IsCompressed())
                 units.append(TEXT(" compressed"));
             t.WriteText(t.TextFormat(), rectLine.left + m_cxNumberArea + padding, rectLine.top, rectLine, units);
 
-            if (node->IsCompressed())
+            if (node->IsSparse() || node->IsCompressed())
                 t.TextBrush()->SetColor(oldColor);
         }
 

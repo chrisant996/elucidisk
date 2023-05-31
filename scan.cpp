@@ -233,7 +233,7 @@ LResetFeedbackInterval:
             else
             {
                 ULARGE_INTEGER uli;
-                if (compressed)
+                if (compressed || (fd.dwFileAttributes & FILE_ATTRIBUTE_SPARSE_FILE))
                 {
                     find.resize(base_path_len);
                     find.append(fd.cFileName);
@@ -250,6 +250,8 @@ LResetFeedbackInterval:
 
                 if (compressed)
                     file->SetCompressed();
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_SPARSE_FILE)
+                    file->SetSparse();
 
                 if (++num > 50 || GetTickCount() - tick > 50)
                 {
