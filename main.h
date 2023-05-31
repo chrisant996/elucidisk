@@ -16,7 +16,8 @@ void WriteRegLong(const WCHAR* name, LONG value);
 extern bool g_use_compressed_size;
 extern bool g_show_free_space;
 extern bool g_show_names;
-extern bool g_rainbow;
+extern long g_color_mode;
+enum ColorMode { CM_PLAIN, CM_RAINBOW, CM_HEATMAP };
 #ifdef DEBUG
 extern long g_fake_data;
 enum FakeDataMode { FDM_REAL, FDM_SIMULATED, FDM_COLORWHEEL, FDM_EMPTYDRIVE, FDM_ONLYDIRS };

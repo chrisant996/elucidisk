@@ -21,7 +21,10 @@ BEGIN
     END
     POPUP ""
     BEGIN
-        MENUITEM "&Rainbow Colors",         IDM_OPTION_RAINBOW
+        MENUITEM "&Plain Colors",           IDM_OPTION_PLAIN
+        MENUITEM "&Rainbow Colors (by angle)", IDM_OPTION_RAINBOW
+        MENUITEM "&Heatmap Colors (by size)", IDM_OPTION_HEATMAP
+        MENUITEM SEPARATOR
         MENUITEM "Show &Names",             IDM_OPTION_NAMES
         MENUITEM "Show &Free Space",        IDM_OPTION_FREESPACE
         MENUITEM "Show &Compressed Sizes",  IDM_OPTION_COMPRESSED

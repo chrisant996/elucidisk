@@ -935,41 +935,139 @@ COLORREF FixLuminance(COLORREF cr)
     return cr;
 }
 
+static COLORREF apply_depth_to_hue(FLOAT hue, size_t depth, bool highlight, bool file)
+{
+    HSLColorType hsl;
+    hsl.h = hue;
+    hsl.s = highlight ? c_maxSat : (c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (c_maxSat / 25));
+    hsl.l = highlight ? c_maxLum*3/5 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 30));
+    return hsl.ToRGB();
+}
+
+inline BYTE blend(BYTE a, BYTE b, FLOAT ratio)
+{
+    return BYTE(FLOAT(a) * ratio) + BYTE(FLOAT(b) * (1.0f - ratio));
+}
+
 D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
 {
     if (arc.m_node->AsFreeSpace())
         return D2D1::ColorF(highlight ? D2D1::ColorF::LightSteelBlue : D2D1::ColorF::WhiteSmoke);
 
-    const bool file = !!arc.m_node->AsFile();
+    DirNode* dir = arc.m_node->AsDir();
+    FileNode* file = arc.m_node->AsFile();
     if (file)
         depth = 0;
-    else if (arc.m_node->AsDir() && arc.m_node->AsDir()->IsHidden())
+    else if (dir && dir->IsHidden())
         return D2D1::ColorF(0xB8B8B8);
 
     if (!is_root_finished(arc.m_node))
         return D2D1::ColorF(highlight ? 0x3078F8 : 0xB8B8B8);
 
-    if (!g_rainbow)
+    switch (g_color_mode)
+    {
+    default:
+    case CM_PLAIN:
         return D2D1::ColorF(highlight ? 0x3078F8 : 0x6495ED);
-// TODO: Option to color based on size vs total?
 
-    const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
+    case CM_RAINBOW:
+        {
+            const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
 
-// TODO: Dark theme.
-    HSLColorType hsl;
-    hsl.h = angle * c_maxHue / 360;
-    hsl.s = highlight ? c_maxSat : (c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (c_maxSat / 25));
-    hsl.l = highlight ? c_maxLum*3/5 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 30));
+            HSLColorType hsl;
+            hsl.h = angle * c_maxHue / 360;
+            hsl.s = highlight ? c_maxSat : (c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (c_maxSat / 25));
+            hsl.l = highlight ? c_maxLum*3/5 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 30));
 
-    const COLORREF rgb = FixLuminance(hsl.ToRGB());
+            const COLORREF rgb = FixLuminance(hsl.ToRGB());
 
-    D2D1_COLOR_F color;
-    color.r = FLOAT(GetRValue(rgb)) / 255;
-    color.g = FLOAT(GetGValue(rgb)) / 255;
-    color.b = FLOAT(GetBValue(rgb)) / 255;
-    color.a = 1.0f;
+            D2D1_COLOR_F color;
+            color.r = FLOAT(GetRValue(rgb)) / 255;
+            color.g = FLOAT(GetGValue(rgb)) / 255;
+            color.b = FLOAT(GetBValue(rgb)) / 255;
+            color.a = 1.0f;
 
-    return color;
+            return color;
+        }
+        break;
+
+    case CM_HEATMAP:
+        {
+            ULONGLONG root_total = 0;
+            ULONGLONG node_total = dir ? dir->GetSize() : file ? file->GetSize() : 0;
+            for (auto parent = arc.m_node->GetParent(); parent; parent = parent->GetParent())
+            {
+                if (parent->AsDrive() && parent->AsDrive()->GetFreeSpace())
+                    root_total = parent->AsDrive()->GetFreeSpace()->GetTotalSize();
+                else
+                    root_total = parent->GetSize();
+            }
+
+            const ULONGLONG skew = ULONGLONG(root_total * 0.01f);
+            root_total = (root_total > skew) ? root_total - skew : 0;
+            node_total = (node_total > skew) ? node_total - skew : 0;
+
+            const FLOAT size_max = FLOAT(root_total) * 0.2f;
+            const FLOAT size_node = FLOAT(node_total);
+
+            const FLOAT hue1 = 0.0f;
+            const FLOAT hue2 = 90.0f;
+            COLORREF rgb;
+
+#if 0
+            const COLORREF rgb1 = apply_depth_to_hue(hue1, depth, highlight, !!file);
+
+            if (size_node >= size_max)
+            {
+                rgb = rgb1;
+            }
+            else
+            {
+                const COLORREF rgb2 = apply_depth_to_hue(hue2, depth, highlight, !!file);
+
+                // const FLOAT log_max = sqrt(FLOAT(size_max));
+                // const FLOAT log_node = log_max - sqrt(FLOAT(size_max - size_node));
+                // const FLOAT ratio = (log_max > 0) ? log_node / log_max : 0.0f;
+                const FLOAT ratio = size_node / size_max;
+
+                rgb = RGB(blend(GetRValue(rgb1), GetRValue(rgb2), ratio),
+                        blend(GetGValue(rgb1), GetGValue(rgb2), ratio),
+                        blend(GetBValue(rgb1), GetBValue(rgb2), ratio));
+
+                if (highlight)
+                {
+                    HSLColorType hsl(rgb);
+                    hsl.s = highlight ? c_maxSat : (c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (c_maxSat / 25));
+                    hsl.l = highlight ? c_maxLum*3/5 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 30));
+                    rgb = hsl.ToRGB();
+                }
+            }
+#else
+            {
+                // const FLOAT log_max = sqrt(FLOAT(size_max));
+                // const FLOAT log_node = log_max - sqrt(FLOAT(size_max - size_node));
+                // const FLOAT ratio = (log_max > 0) ? log_node / log_max : 0.0f;
+                const FLOAT ratio = size_node / size_max;
+
+                const FLOAT range = hue2 - hue1;
+                const FLOAT hue = range - ratio * range;
+
+                rgb = apply_depth_to_hue(hue, depth, highlight, !!file);
+            }
+#endif
+
+            rgb = FixLuminance(rgb);
+
+            D2D1_COLOR_F color;
+            color.r = FLOAT(GetRValue(rgb)) / 255;
+            color.g = FLOAT(GetGValue(rgb)) / 255;
+            color.b = FLOAT(GetBValue(rgb)) / 255;
+            color.a = 1.0f;
+
+            return color;
+        }
+        break;
+    }
 }
 
 D2D1_COLOR_F Sunburst::MakeRootColor(bool highlight, bool free)

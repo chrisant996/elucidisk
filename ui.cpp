@@ -1525,6 +1525,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 pTarget->BeginDraw();
 
                 pTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+// TODO: Dark theme.
                 pTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
 
                 const D2D1_SIZE_F rtSize = pTarget->GetSize();
@@ -1767,8 +1768,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 CheckMenuItem(hmenuSub, IDM_OPTION_FREESPACE, MF_BYCOMMAND|MF_CHECKED);
             if (g_show_names)
                 CheckMenuItem(hmenuSub, IDM_OPTION_NAMES, MF_BYCOMMAND|MF_CHECKED);
-            if (g_rainbow)
-                CheckMenuItem(hmenuSub, IDM_OPTION_RAINBOW, MF_BYCOMMAND|MF_CHECKED);
+            CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
 #ifdef DEBUG
             CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
             if (g_fake_data)
@@ -1868,10 +1868,19 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 WriteRegLong(TEXT("ShowNames"), g_show_names);
                 InvalidateRect(m_hwnd, nullptr, false);
                 break;
+
+            case IDM_OPTION_PLAIN:
             case IDM_OPTION_RAINBOW:
-                g_rainbow = !g_rainbow;
-                WriteRegLong(TEXT("Rainbow"), g_rainbow);
-                InvalidateRect(m_hwnd, nullptr, false);
+            case IDM_OPTION_HEATMAP:
+                {
+                    const long color_mode = idm - IDM_OPTION_PLAIN;
+                    if (color_mode != g_color_mode)
+                    {
+                        g_color_mode = color_mode;
+                        WriteRegLong(TEXT("ColorMode"), g_color_mode);
+                        InvalidateRect(m_hwnd, nullptr, false);
+                    }
+                }
                 break;
 
 #ifdef DEBUG

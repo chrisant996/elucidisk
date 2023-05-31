@@ -14,7 +14,7 @@ static const WCHAR c_reg_root[] = TEXT("Software\\Elucidisk");
 bool g_use_compressed_size = false;
 bool g_show_free_space = true;
 bool g_show_names = true;
-bool g_rainbow = true;
+long g_color_mode = CM_RAINBOW;
 #ifdef DEBUG
 long g_fake_data = FDM_REAL;
 #endif
@@ -51,7 +51,7 @@ int PASCAL WinMain(
     g_use_compressed_size = !!ReadRegLong(TEXT("UseCompressedSize"), false);
     g_show_free_space = !!ReadRegLong(TEXT("ShowFreeSpace"), true);
     g_show_names = !!ReadRegLong(TEXT("ShowNames"), true);
-    g_rainbow = !!ReadRegLong(TEXT("Rainbow"), true);
+    g_color_mode = ReadRegLong(TEXT("ColorMode"), CM_RAINBOW);
 #ifdef DEBUG
     g_fake_data = ReadRegLong(TEXT("DbgFakeData"), FDM_REAL);
 #endif
