@@ -923,6 +923,7 @@ protected:
 
     LRESULT                 WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
     void                    OnCommand(WORD id, HWND hwndCtrl, WORD code);
+    void                    ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>& node=nullptr);
     void                    OnDpiChanged(const DpiScaler& dpi);
     void                    OnLayout(RECT* prc);
     LRESULT                 OnDestroy();
@@ -1708,204 +1709,17 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             pt.y = GET_Y_LPARAM(lParam);
 
             std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
-            DirNode* const dir = node ? node->AsDir() : nullptr;
-            FileNode* const file = node ? node->AsFile() : nullptr;
-            DirNode* const parent = (node && node->GetParent() ? node->GetParent()->AsDir() : nullptr);
-            RecycleBinNode* const recycle = (dir && dir->AsRecycleBin() ? dir->AsRecycleBin() :
-                                             dir && dir->GetRecycleBin() ? dir->GetRecycleBin()->AsRecycleBin() :
-                                             nullptr);
-            std::wstring path;
-
-            if (node)
-            {
-                if (is_root_finished(node) && !file && !dir)
-                    break;
-
-                node->GetFullPath(path);
-                if (path.empty())
-                    break;
-            }
 
             POINT ptScreen = pt;
             ClientToScreen(m_hwnd, &ptScreen);
 
-            const int nPos = node ? 0 : 1;
-            HMENU hmenu = LoadMenu(m_hinst, MAKEINTRESOURCE(IDR_CONTEXT_MENU));
-            HMENU hmenuSub = GetSubMenu(hmenu, nPos);
-
-            const bool root_finished(node);
-            if (!root_finished || !m_scanner.IsComplete())
-            {
-                EnableMenuItem(hmenuSub, IDM_RESCAN, MF_BYCOMMAND|MF_GRAYED);
-                EnableMenuItem(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
-                EnableMenuItem(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
-            }
-
-            if (file)
-            {
-                DeleteMenu(hmenuSub, IDM_RESCAN, MF_BYCOMMAND);
-                DeleteMenu(hmenuSub, IDM_OPEN_DIRECTORY, MF_BYCOMMAND);
-            }
-            if (file || !parent)
-            {
-                DeleteMenu(hmenuSub, IDM_HIDE_DIRECTORY, MF_BYCOMMAND);
-                DeleteMenu(hmenuSub, IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
-            }
-            if (dir)
-            {
-                if (dir->IsRecycleBin() || !parent)
-                {
-                    DeleteMenu(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND);
-                    DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
-                }
-                DeleteMenu(hmenuSub, IDM_OPEN_FILE, MF_BYCOMMAND);
-                DeleteMenu(hmenuSub, dir->IsHidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
-            }
-            if (!recycle)
-                DeleteMenu(hmenuSub, IDM_EMPTY_RECYCLEBIN, MF_BYCOMMAND);
-
-            if (g_use_compressed_size)
-                CheckMenuItem(hmenuSub, IDM_OPTION_COMPRESSED, MF_BYCOMMAND|MF_CHECKED);
-            if (g_show_free_space)
-                CheckMenuItem(hmenuSub, IDM_OPTION_FREESPACE, MF_BYCOMMAND|MF_CHECKED);
-            if (g_show_names)
-                CheckMenuItem(hmenuSub, IDM_OPTION_NAMES, MF_BYCOMMAND|MF_CHECKED);
-            CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
-#ifdef DEBUG
-            CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
-            if (g_fake_data)
-            {
-                EnableMenuItem(hmenuSub, IDM_OPEN_FILE, MF_BYCOMMAND|MF_GRAYED);
-                EnableMenuItem(hmenuSub, IDM_OPEN_DIRECTORY, MF_BYCOMMAND|MF_GRAYED);
-                EnableMenuItem(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
-                EnableMenuItem(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
-                EnableMenuItem(hmenuSub, IDM_EMPTY_RECYCLEBIN, MF_BYCOMMAND|MF_GRAYED);
-            }
-#endif
-
-            MakeMenuPretty(hmenuSub);
-
-            if (recycle)
-            {
-                WCHAR sz[100];
-                MENUITEMINFO mii = { sizeof(mii) };
-                mii.fMask = MIIM_STRING;
-                mii.dwTypeData = sz;
-                mii.cch = _countof(sz);
-                if (GetMenuItemInfo(hmenuSub, IDM_EMPTY_RECYCLEBIN, false, &mii))
-                {
-                    WCHAR sz2[100];
-                    std::wstring size;
-                    std::wstring units;
-                    FormatSize(recycle->GetSize(), size, units);
-                    swprintf_s(sz2, _countof(sz2), TEXT("%s (%s %s)"), sz, size.c_str(), units.c_str());
-
-                    mii.fMask = MIIM_FTYPE|MIIM_STRING;
-                    mii.dwTypeData = sz2;
-                    mii.cch = UINT(wcslen(sz2));
-                    mii.fType = MFT_STRING;
-                    SetMenuItemInfo(hmenuSub, IDM_EMPTY_RECYCLEBIN, false, &mii);
-                }
-            }
-
-            const UINT idm = TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr);
-            switch (idm)
-            {
-            case IDM_RESCAN:
-                if (dir)
-                    Rescan(std::static_pointer_cast<DirNode>(node));
-                break;
-            case IDM_OPEN_DIRECTORY:
-            case IDM_OPEN_FILE:
-                if (node)
-                {
-                    if (dir && dir->IsRecycleBin())
-                        ShellOpenRecycleBin(m_hwnd);
-                    else
-                        ShellOpen(m_hwnd, path.c_str());
-                }
-                break;
-
-            case IDM_RECYCLE_ENTRY:
-                if (node && ShellRecycle(m_hwnd, path.c_str()))
-                    DeleteNode(node);
-                break;
-            case IDM_DELETE_ENTRY:
-                if (node && ShellDelete(m_hwnd, path.c_str()))
-                    DeleteNode(node);
-                break;
-            case IDM_EMPTY_RECYCLEBIN:
-                if (recycle)
-                {
-                    Hourglass hg;
-
-                    path = recycle->GetParent()->GetName();
-                    if (ShellEmptyRecycleBin(m_hwnd, path.c_str()))
-                        recycle->UpdateRecycleBin(m_ui_mutex);
-                }
-                break;
-
-            case IDM_HIDE_DIRECTORY:
-            case IDM_SHOW_DIRECTORY:
-                if (dir)
-                {
-                    dir->Hide(!dir->IsHidden());
-                    InvalidateRect(m_hwnd, nullptr, false);
-                }
-                break;
-
-            case IDM_OPTION_COMPRESSED:
-                g_use_compressed_size = !g_use_compressed_size;
-                WriteRegLong(TEXT("UseCompressedSize"), g_use_compressed_size);
-                if (IDYES == MessageBox(m_hwnd, TEXT("The setting will take effect in the next scan.\n\nRescan now?"), TEXT("Confirm Rescan"), MB_YESNOCANCEL|MB_ICONQUESTION))
-                    Refresh(true/*all*/);
-                break;
-            case IDM_OPTION_FREESPACE:
-                g_show_free_space = !g_show_free_space;
-                WriteRegLong(TEXT("ShowFreeSpace"), g_show_free_space);
-                InvalidateRect(m_hwnd, nullptr, false);
-                break;
-            case IDM_OPTION_NAMES:
-                g_show_names = !g_show_names;
-                WriteRegLong(TEXT("ShowNames"), g_show_names);
-                InvalidateRect(m_hwnd, nullptr, false);
-                break;
-
-            case IDM_OPTION_PLAIN:
-            case IDM_OPTION_RAINBOW:
-            case IDM_OPTION_HEATMAP:
-                {
-                    const long color_mode = idm - IDM_OPTION_PLAIN;
-                    if (color_mode != g_color_mode)
-                    {
-                        g_color_mode = color_mode;
-                        WriteRegLong(TEXT("ColorMode"), g_color_mode);
-                        InvalidateRect(m_hwnd, nullptr, false);
-                    }
-                }
-                break;
-
-#ifdef DEBUG
-            case IDM_OPTION_REALDATA:
-            case IDM_OPTION_SIMULATED:
-            case IDM_OPTION_COLORWHEEL:
-            case IDM_OPTION_EMPTYDRIVE:
-            case IDM_OPTION_ONLYDIRS:
-                {
-                    const long fake_data = idm - IDM_OPTION_REALDATA;
-                    if (fake_data != g_fake_data)
-                    {
-                        g_fake_data = fake_data;
-                        WriteRegLong(TEXT("DbgFakeData"), g_fake_data);
-                        Refresh(true/*all*/);
-                    }
-                }
-                break;
-#endif
-            }
-
-            DestroyMenu(hmenu);
+            ContextMenu(ptScreen, node);
         }
+        break;
+
+    case WM_RBUTTONUP:
+        // Do nothing; this is important to avoid WM_CONTEXTMENU, and to avoid
+        // interfering with Shift-F10.
         break;
 
     case WM_GETMINMAXINFO:
@@ -1964,6 +1778,28 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             const HWND hwndCtrl = GET_WM_COMMAND_HWND(wParam, lParam);
             const WORD code = GET_WM_COMMAND_CMD(wParam, lParam);
             OnCommand(id, hwndCtrl, code);
+        }
+        break;
+
+    case WM_CONTEXTMENU:
+        {
+            POINT ptScreen;
+            if (lParam == LPARAM(-1))
+            {
+                RECT rcClient;
+                GetClientRect(m_hwnd, &rcClient);
+
+                ptScreen.x = (rcClient.left + rcClient.right) / 2;
+                ptScreen.y = rcClient.top + m_dpi.Scale(32);
+                ClientToScreen(m_hwnd, &ptScreen);
+            }
+            else
+            {
+                ptScreen.x = GET_X_LPARAM(lParam);
+                ptScreen.y = GET_Y_LPARAM(lParam);
+            }
+
+            ContextMenu(ptScreen);
         }
         break;
 
@@ -2049,6 +1885,204 @@ void MainWindow::OnCommand(WORD id, HWND hwndCtrl, WORD code)
         }
         break;
     }
+}
+
+void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>& node)
+{
+    DirNode* const dir = node ? node->AsDir() : nullptr;
+    FileNode* const file = node ? node->AsFile() : nullptr;
+    DirNode* const parent = (node && node->GetParent() ? node->GetParent()->AsDir() : nullptr);
+    RecycleBinNode* const recycle = (dir && dir->AsRecycleBin() ? dir->AsRecycleBin() :
+                                     dir && dir->GetRecycleBin() ? dir->GetRecycleBin()->AsRecycleBin() :
+                                     nullptr);
+    std::wstring path;
+
+    if (node)
+    {
+        if (is_root_finished(node) && !file && !dir)
+            return;
+
+        node->GetFullPath(path);
+        if (path.empty())
+            return;
+    }
+
+    const int nPos = node ? 0 : 1;
+    HMENU hmenu = LoadMenu(m_hinst, MAKEINTRESOURCE(IDR_CONTEXT_MENU));
+    HMENU hmenuSub = GetSubMenu(hmenu, nPos);
+
+    const bool root_finished = (node && is_root_finished(node));
+    if (!root_finished || !m_scanner.IsComplete())
+    {
+        EnableMenuItem(hmenuSub, IDM_RESCAN, MF_BYCOMMAND|MF_GRAYED);
+        EnableMenuItem(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+        EnableMenuItem(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+    }
+
+    if (file)
+    {
+        DeleteMenu(hmenuSub, IDM_RESCAN, MF_BYCOMMAND);
+        DeleteMenu(hmenuSub, IDM_OPEN_DIRECTORY, MF_BYCOMMAND);
+    }
+    if (file || !parent)
+    {
+        DeleteMenu(hmenuSub, IDM_HIDE_DIRECTORY, MF_BYCOMMAND);
+        DeleteMenu(hmenuSub, IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
+    }
+    if (dir)
+    {
+        if (dir->IsRecycleBin() || !parent)
+        {
+            DeleteMenu(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND);
+            DeleteMenu(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND);
+        }
+        DeleteMenu(hmenuSub, IDM_OPEN_FILE, MF_BYCOMMAND);
+        DeleteMenu(hmenuSub, dir->IsHidden() ? IDM_HIDE_DIRECTORY : IDM_SHOW_DIRECTORY, MF_BYCOMMAND);
+    }
+    if (!recycle)
+        DeleteMenu(hmenuSub, IDM_EMPTY_RECYCLEBIN, MF_BYCOMMAND);
+
+    if (g_use_compressed_size)
+        CheckMenuItem(hmenuSub, IDM_OPTION_COMPRESSED, MF_BYCOMMAND|MF_CHECKED);
+    if (g_show_free_space)
+        CheckMenuItem(hmenuSub, IDM_OPTION_FREESPACE, MF_BYCOMMAND|MF_CHECKED);
+    if (g_show_names)
+        CheckMenuItem(hmenuSub, IDM_OPTION_NAMES, MF_BYCOMMAND|MF_CHECKED);
+    CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
+#ifdef DEBUG
+    CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
+    if (g_fake_data)
+    {
+        EnableMenuItem(hmenuSub, IDM_OPEN_FILE, MF_BYCOMMAND|MF_GRAYED);
+        EnableMenuItem(hmenuSub, IDM_OPEN_DIRECTORY, MF_BYCOMMAND|MF_GRAYED);
+        EnableMenuItem(hmenuSub, IDM_RECYCLE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+        EnableMenuItem(hmenuSub, IDM_DELETE_ENTRY, MF_BYCOMMAND|MF_GRAYED);
+        EnableMenuItem(hmenuSub, IDM_EMPTY_RECYCLEBIN, MF_BYCOMMAND|MF_GRAYED);
+    }
+#endif
+
+    MakeMenuPretty(hmenuSub);
+
+    if (recycle)
+    {
+        WCHAR sz[100];
+        MENUITEMINFO mii = { sizeof(mii) };
+        mii.fMask = MIIM_STRING;
+        mii.dwTypeData = sz;
+        mii.cch = _countof(sz);
+        if (GetMenuItemInfo(hmenuSub, IDM_EMPTY_RECYCLEBIN, false, &mii))
+        {
+            WCHAR sz2[100];
+            std::wstring size;
+            std::wstring units;
+            FormatSize(recycle->GetSize(), size, units);
+            swprintf_s(sz2, _countof(sz2), TEXT("%s (%s %s)"), sz, size.c_str(), units.c_str());
+
+            mii.fMask = MIIM_FTYPE|MIIM_STRING;
+            mii.dwTypeData = sz2;
+            mii.cch = UINT(wcslen(sz2));
+            mii.fType = MFT_STRING;
+            SetMenuItemInfo(hmenuSub, IDM_EMPTY_RECYCLEBIN, false, &mii);
+        }
+    }
+
+    const UINT idm = TrackPopupMenu(hmenuSub, TPM_RIGHTBUTTON|TPM_RETURNCMD, ptScreen.x, ptScreen.y, 0, m_hwnd, nullptr);
+    switch (idm)
+    {
+    case IDM_RESCAN:
+        if (dir)
+            Rescan(std::static_pointer_cast<DirNode>(node));
+        break;
+    case IDM_OPEN_DIRECTORY:
+    case IDM_OPEN_FILE:
+        if (node)
+        {
+            if (dir && dir->IsRecycleBin())
+                ShellOpenRecycleBin(m_hwnd);
+            else
+                ShellOpen(m_hwnd, path.c_str());
+        }
+        break;
+
+    case IDM_RECYCLE_ENTRY:
+        if (node && ShellRecycle(m_hwnd, path.c_str()))
+            DeleteNode(node);
+        break;
+    case IDM_DELETE_ENTRY:
+        if (node && ShellDelete(m_hwnd, path.c_str()))
+            DeleteNode(node);
+        break;
+    case IDM_EMPTY_RECYCLEBIN:
+        if (recycle)
+        {
+            Hourglass hg;
+
+            path = recycle->GetParent()->GetName();
+            if (ShellEmptyRecycleBin(m_hwnd, path.c_str()))
+                recycle->UpdateRecycleBin(m_ui_mutex);
+        }
+        break;
+
+    case IDM_HIDE_DIRECTORY:
+    case IDM_SHOW_DIRECTORY:
+        if (dir)
+        {
+            dir->Hide(!dir->IsHidden());
+            InvalidateRect(m_hwnd, nullptr, false);
+        }
+        break;
+
+    case IDM_OPTION_COMPRESSED:
+        g_use_compressed_size = !g_use_compressed_size;
+        WriteRegLong(TEXT("UseCompressedSize"), g_use_compressed_size);
+        if (IDYES == MessageBox(m_hwnd, TEXT("The setting will take effect in the next scan.\n\nRescan now?"), TEXT("Confirm Rescan"), MB_YESNOCANCEL|MB_ICONQUESTION))
+            Refresh(true/*all*/);
+        break;
+    case IDM_OPTION_FREESPACE:
+        g_show_free_space = !g_show_free_space;
+        WriteRegLong(TEXT("ShowFreeSpace"), g_show_free_space);
+        InvalidateRect(m_hwnd, nullptr, false);
+        break;
+    case IDM_OPTION_NAMES:
+        g_show_names = !g_show_names;
+        WriteRegLong(TEXT("ShowNames"), g_show_names);
+        InvalidateRect(m_hwnd, nullptr, false);
+        break;
+
+    case IDM_OPTION_PLAIN:
+    case IDM_OPTION_RAINBOW:
+    case IDM_OPTION_HEATMAP:
+        {
+            const long color_mode = idm - IDM_OPTION_PLAIN;
+            if (color_mode != g_color_mode)
+            {
+                g_color_mode = color_mode;
+                WriteRegLong(TEXT("ColorMode"), g_color_mode);
+                InvalidateRect(m_hwnd, nullptr, false);
+            }
+        }
+        break;
+
+#ifdef DEBUG
+    case IDM_OPTION_REALDATA:
+    case IDM_OPTION_SIMULATED:
+    case IDM_OPTION_COLORWHEEL:
+    case IDM_OPTION_EMPTYDRIVE:
+    case IDM_OPTION_ONLYDIRS:
+        {
+            const long fake_data = idm - IDM_OPTION_REALDATA;
+            if (fake_data != g_fake_data)
+            {
+                g_fake_data = fake_data;
+                WriteRegLong(TEXT("DbgFakeData"), g_fake_data);
+                Refresh(true/*all*/);
+            }
+        }
+        break;
+#endif
+    }
+
+    DestroyMenu(hmenu);
 }
 
 void MainWindow::OnDpiChanged(const DpiScaler& dpi)
