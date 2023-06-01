@@ -845,6 +845,8 @@ int Buttons::HitTest(const POINT* pt) const
     {
         for (size_t ii = 0; ii < m_buttons.size(); ++ii)
         {
+            if (m_buttons[ii].m_hidden)
+                continue;
             if (PtInRect(&m_buttons[ii].m_rect, *pt))
                 return int(ii);
         }
