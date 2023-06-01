@@ -25,7 +25,7 @@ constexpr int c_retrograde_depths = 10;
 
 constexpr WCHAR c_fontface[] = TEXT("Segoe UI");
 constexpr FLOAT c_fontsize = 10.0f;
-constexpr FLOAT c_centerfontsize = 12.0f;
+constexpr FLOAT c_headerfontsize = 12.0f;
 constexpr FLOAT c_arcfontsize = 8.0f;
 
 #ifdef USE_MIN_ARC_LENGTH
@@ -310,17 +310,17 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
             &m_spTextFormat));
     m_spTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
 
-    m_centerFontSize = FLOAT(-dpi.PointSizeToHeight(c_centerfontsize));
+    m_headerFontSize = FLOAT(-dpi.PointSizeToHeight(c_headerfontsize));
     ERRRET(m_spDWriteFactory->CreateTextFormat(
             c_fontface,
             nullptr,
             DWRITE_FONT_WEIGHT_BOLD,
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
-            m_centerFontSize,
+            m_headerFontSize,
             TEXT("en-US"),
-            &m_spCenterTextFormat));
-    m_spCenterTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+            &m_spHeaderTextFormat));
+    m_spHeaderTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
 
     m_arcFontSize = FLOAT(-dpi.PointSizeToHeight(c_arcfontsize));
     ERRRET(m_spDWriteFactory->CreateTextFormat(
@@ -420,6 +420,25 @@ static void SetStringWithEllipsis(Shortened& out, const WCHAR* in, size_t len, s
         if (ellipsis > 0)
             out.m_text.append(c_ellipsis);
     }
+}
+
+bool DirectHwndRenderTarget::CreateTextFormat(FLOAT fontsize, DWRITE_FONT_WEIGHT weight, IDWriteTextFormat** ppTextFormat) const
+{
+    SPI<IDWriteTextFormat> spTextFormat;
+    if (FAILED(m_resources->m_spDWriteFactory->CreateTextFormat(
+            c_fontface,
+            nullptr,
+            weight,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            fontsize,
+            TEXT("en-US"),
+            &spTextFormat)))
+        return false;
+
+    spTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    *ppTextFormat = spTextFormat.Transfer();
+    return true;
 }
 
 bool DirectHwndRenderTarget::ShortenText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, const size_t len, FLOAT target, Shortened& out, int ellipsis)
@@ -559,66 +578,54 @@ static FLOAT make_center_radius(const DpiScaler& dpi, const FLOAT boundary_radiu
         return FLOAT(dpi.Scale(c_centerRadiusMin));
 }
 
-struct SunburstMetrics
+SunburstMetrics::SunburstMetrics(const Sunburst& sunburst)
+: SunburstMetrics(sunburst.m_dpi, sunburst.m_bounds)
 {
-    SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds)
-    : stroke(FLOAT(dpi.Scale(1)))
-    , margin(FLOAT(dpi.Scale(5)))
-    , indicator_thickness(FLOAT(dpi.Scale(4)))
-    , boundary_radius(FLOAT(std::min<LONG>(LONG(bounds.right - bounds.left), LONG(bounds.bottom - bounds.top)) / 2 - margin))
-    , center_radius(make_center_radius(dpi, boundary_radius))
-    , max_radius(boundary_radius - (margin + indicator_thickness + margin))
-    , range_radius(max_radius - center_radius)
+}
+
+SunburstMetrics::SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds)
+: stroke(FLOAT(dpi.Scale(1)))
+, margin(FLOAT(dpi.Scale(5)))
+, indicator_thickness(FLOAT(dpi.Scale(4)))
+, boundary_radius(FLOAT(std::min<LONG>(LONG(bounds.right - bounds.left), LONG(bounds.bottom - bounds.top)) / 2 - margin))
+, center_radius(make_center_radius(dpi, boundary_radius))
+, max_radius(boundary_radius - (margin + indicator_thickness + margin))
+, range_radius(max_radius - center_radius)
 #ifdef USE_MIN_ARC_LENGTH
-    , min_arc(dpi.ScaleF(c_minArc))
+, min_arc(dpi.ScaleF(c_minArc))
 #endif
+{
+    if (g_show_proportional_area)
     {
-        if (g_show_proportional_area)
+        FLOAT radius = center_radius;
+        // const FLOAT coefficient = 0.18f;
+        // FLOAT thickness = FLOAT(ceil(std::min<FLOAT>(center_radius * coefficient, 9999999999.9f)));//FLOAT(dpi.Scale(c_max_thickness)))));
+        const FLOAT coefficient = 0.67f;
+        FLOAT thickness = FLOAT(ceil(center_radius * coefficient));
+        for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
         {
-            FLOAT radius = center_radius;
-            // const FLOAT coefficient = 0.18f;
-            // FLOAT thickness = FLOAT(ceil(std::min<FLOAT>(center_radius * coefficient, 9999999999.9f)));//FLOAT(dpi.Scale(c_max_thickness)))));
-            const FLOAT coefficient = 0.67f;
-            FLOAT thickness = FLOAT(ceil(center_radius * coefficient));
-            for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
-            {
-                thicknesses[ii] = thickness;
-                const FLOAT outer = radius + thickness;
-                const FLOAT add = sqrt(2 * outer * outer - radius * radius) - outer;
-                thickness = FLOAT(floor(add));
-                radius = outer;
-            }
-        }
-        else
-        {
-            FLOAT thickness = FLOAT(dpi.Scale(c_thickness));
-            const FLOAT retrograde = FLOAT(dpi.Scale(c_retrograde));
-            for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
-                thicknesses[ii] = thickness - (retrograde * std::min<size_t>(ii, c_retrograde_depths));
+            thicknesses[ii] = thickness;
+            const FLOAT outer = radius + thickness;
+            const FLOAT add = sqrt(2 * outer * outer - radius * radius) - outer;
+            thickness = FLOAT(floor(add));
+            radius = outer;
         }
     }
-
-    FLOAT get_thickness(size_t depth) const
+    else
     {
-        if (depth < _countof(thicknesses))
-            return thicknesses[depth];
-        return g_show_proportional_area ? 0.0f : thicknesses[_countof(thicknesses) - 1];
+        FLOAT thickness = FLOAT(dpi.Scale(c_thickness));
+        const FLOAT retrograde = FLOAT(dpi.Scale(c_retrograde));
+        for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
+            thicknesses[ii] = thickness - (retrograde * std::min<size_t>(ii, c_retrograde_depths));
     }
+}
 
-    const FLOAT stroke;
-    const FLOAT margin;
-    const FLOAT indicator_thickness;
-    const FLOAT boundary_radius;
-    const FLOAT center_radius;
-    const FLOAT max_radius;
-    const FLOAT range_radius;
-#ifdef USE_MIN_ARC_LENGTH
-    const FLOAT min_arc;
-#endif
-
-private:
-    FLOAT thicknesses[c_max_depth];
-};
+FLOAT SunburstMetrics::get_thickness(size_t depth) const
+{
+    if (depth < _countof(thicknesses))
+        return thicknesses[depth];
+    return g_show_proportional_area ? 0.0f : thicknesses[_countof(thicknesses) - 1];
+}
 
 //----------------------------------------------------------------------------
 // Sunburst.
@@ -672,12 +679,8 @@ void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node
     }
 }
 
-void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
+void Sunburst::BuildRings(const SunburstMetrics& mx, const std::vector<std::shared_ptr<DirNode>>& _roots)
 {
-#ifdef USE_MIN_ARC_LENGTH
-    SunburstMetrics mx(m_dpi, m_bounds);
-#endif
-
     const std::vector<std::shared_ptr<DirNode>> roots = _roots;
 
     std::vector<double> totals; // Total space (used + free); when FreeSpaceNode is present it's total hardware space.
@@ -1223,7 +1226,7 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
     }
 }
 
-void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight)
+void Sunburst::RenderRings(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight)
 {
     if (m_start_angles.empty())
         return;
@@ -1232,7 +1235,6 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr
 
     // Two passes, so files are "beneath" everything else.
 
-    SunburstMetrics mx(m_dpi, m_bounds);
     RenderRingsInternal(target, mx, highlight, true/*files*/, highlightInfo);
     RenderRingsInternal(target, mx, highlight, false/*files*/, highlightInfo);
 
@@ -1470,14 +1472,12 @@ void Sunburst::FormatSize(const ULONGLONG size, std::wstring& text, std::wstring
     ::FormatSize(size, text, units, m_units, places);
 }
 
-std::shared_ptr<Node> Sunburst::HitTest(POINT pt, bool* is_free)
+std::shared_ptr<Node> Sunburst::HitTest(const SunburstMetrics& mx, POINT pt, bool* is_free)
 {
     const FLOAT angle = FindAngle(m_center, FLOAT(pt.x), FLOAT(pt.y));
     const FLOAT xdelta = (pt.x - m_center.x);
     const FLOAT ydelta = (pt.y - m_center.y);
     const FLOAT radius = sqrt((xdelta * xdelta) + (ydelta * ydelta));
-
-    SunburstMetrics mx(m_dpi, m_bounds);
 
     const bool use_parent = (radius <= mx.center_radius);
     if (use_parent)

@@ -13,6 +13,8 @@
 #include <windowsx.h>
 #include <iosfwd>
 
+extern const WCHAR c_fontface[];
+
 void inset_rect_for_stroke(D2D1_RECT_F& rect, FLOAT stroke)
 {
     rect.left += 0.5f;
@@ -1324,7 +1326,7 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
     D2D1_SIZE_F size;
 
     SPI<IDWriteTextLayout> spTextLayout;
-    IDWriteTextFormat* pTextFormat = bold ? t.CenterTextFormat() : t.TextFormat();
+    IDWriteTextFormat* pTextFormat = bold ? t.HeaderTextFormat() : t.TextFormat();
     if (m_directRender.MeasureText(pTextFormat, rectLine, text, size) &&
         size.width > rect.right - rect.left)
     {
@@ -1358,10 +1360,7 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
     const WriteTextOptions options = bold ? WTO_HCENTER|WTO_CLIP : WTO_CLIP;
     t.WriteText(pTextFormat, rectLine.left, rectLine.top, rectLine, text, options);
 
-// TODO: Need a constant Title size, since Center will scale.  Can probably
-// simply rename Center to Title, and add a new Center TextFormat that's
-// created dynamically during WM_PAINT.
-    rectLine.top += (bold ? t.CenterFontSize() : t.FontSize()) + padding;
+    rectLine.top += (bold ? t.HeaderFontSize() : t.FontSize()) + padding;
 
     // Write node details.
 
@@ -1554,6 +1553,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 const size_t gen = ++s_gen;
 
                 Sunburst sunburst;
+                SunburstMetrics mx(m_dpi, bounds);
                 {
                     std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
 
@@ -1561,9 +1561,9 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     sunburst.SetBounds(bounds);
 
                     // FUTURE: Only rebuild rings when something has changed?
-                    sunburst.BuildRings(m_roots);
-                    m_hover_node = sunburst.HitTest(pt, &m_hover_free);
-                    sunburst.RenderRings(m_directRender, m_hover_node);
+                    sunburst.BuildRings(mx, m_roots);
+                    m_hover_node = sunburst.HitTest(mx, pt, &m_hover_free);
+                    sunburst.RenderRings(m_directRender, mx, m_hover_node);
                 }
 
                 if (gen == s_gen)
@@ -1635,13 +1635,17 @@ LShowTotal:
                     text.append(TEXT(" "));
                     text.append(units);
 
-// TODO: Scale center fonts with center radius.
-                    m_directRender.WriteText(m_directRender.CenterTextFormat(), 0.0f, 0.0f, bounds, text, WTO_HCENTER|WTO_VCENTER|WTO_REMEMBER_METRICS);
-                    if (!label.empty())
+                    SPI<IDWriteTextFormat> spLabelTextFormat;
+                    SPI<IDWriteTextFormat> spCenterTextFormat;
+                    if (m_directRender.CreateTextFormat(0.25f * mx.center_radius, DWRITE_FONT_WEIGHT_BOLD, &spCenterTextFormat))
                     {
-                        D2D1_RECT_F rectLabel = bounds;
-                        rectLabel.bottom = m_directRender.LastTextPosition().y;
-                        m_directRender.WriteText(m_directRender.TextFormat(), 0.0f, 0.0f, rectLabel, label, WTO_HCENTER|WTO_BOTTOM_ALIGN);
+                        m_directRender.WriteText(spCenterTextFormat, 0.0f, 0.0f, bounds, text, WTO_HCENTER|WTO_VCENTER|WTO_REMEMBER_METRICS);
+                        if (!label.empty() && m_directRender.CreateTextFormat(0.2f * mx.center_radius, DWRITE_FONT_WEIGHT_NORMAL, &spLabelTextFormat))
+                        {
+                            D2D1_RECT_F rectLabel = bounds;
+                            rectLabel.bottom = m_directRender.LastTextPosition().y;
+                            m_directRender.WriteText(spLabelTextFormat, 0.0f, 0.0f, rectLabel, label, WTO_HCENTER|WTO_BOTTOM_ALIGN);
+                        }
                     }
                 }
 
@@ -1680,7 +1684,8 @@ LShowTotal:
 
             const std::shared_ptr<Node> hover(m_hover_node);
             const bool hover_free = m_hover_free;
-            m_hover_node = m_sunburst.HitTest(pt, &m_hover_free);
+            SunburstMetrics mx(m_sunburst);
+            m_hover_node = m_sunburst.HitTest(mx, pt, &m_hover_free);
 
             if (hover != m_hover_node || hover_free != m_hover_free)
                 InvalidateRect(m_hwnd, nullptr, false);
@@ -1720,7 +1725,8 @@ LShowTotal:
             pt.x = GET_X_LPARAM(lParam);
             pt.y = GET_Y_LPARAM(lParam);
 
-            std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
+            SunburstMetrics mx(m_sunburst);
+            std::shared_ptr<Node> node = m_sunburst.HitTest(mx, pt);
             Expand(node);
 
             m_buttons.OnMouseMessage(msg, &pt);
@@ -1746,7 +1752,8 @@ LShowTotal:
             pt.x = GET_X_LPARAM(lParam);
             pt.y = GET_Y_LPARAM(lParam);
 
-            std::shared_ptr<Node> node = m_sunburst.HitTest(pt);
+            SunburstMetrics mx(m_sunburst);
+            std::shared_ptr<Node> node = m_sunburst.HitTest(mx, pt);
 
             POINT ptScreen = pt;
             ClientToScreen(m_hwnd, &ptScreen);

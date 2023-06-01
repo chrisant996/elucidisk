@@ -17,8 +17,11 @@
 
 //#define USE_CHART_OUTLINE               // Experimenting with this off.
 
+#define MAX_SUNBURST_DEPTH 20
+
 class DirNode;
 struct SunburstMetrics;
+class Sunburst;
 
 HRESULT InitializeD2D();
 HRESULT InitializeDWrite();
@@ -68,9 +71,9 @@ class DirectHwndRenderTarget
         SPI<ID2D1StrokeStyle>       m_spBevelStroke;
 
         SPI<IDWriteTextFormat>      m_spTextFormat;
-        SPI<IDWriteTextFormat>      m_spCenterTextFormat;
+        SPI<IDWriteTextFormat>      m_spHeaderTextFormat;
         FLOAT                       m_fontSize = 0.0f;
-        FLOAT                       m_centerFontSize = 0.0f;
+        FLOAT                       m_headerFontSize = 0.0f;
 
         SPI<IDWriteTextFormat>      m_spArcTextFormat;
         SPI<IDWriteRenderingParams> m_spRenderingParams;
@@ -103,13 +106,15 @@ public:
 
     IDWriteTextFormat*      TextFormat() const { return m_resources->m_spTextFormat; }
     FLOAT                   FontSize() const { return m_resources->m_fontSize; }
-    IDWriteTextFormat*      CenterTextFormat() const { return m_resources->m_spCenterTextFormat; }
-    FLOAT                   CenterFontSize() const { return m_resources->m_centerFontSize; }
+    IDWriteTextFormat*      HeaderTextFormat() const { return m_resources->m_spHeaderTextFormat; }
+    FLOAT                   HeaderFontSize() const { return m_resources->m_headerFontSize; }
 
     ID2D1DeviceContext*     Context() const { return m_resources->m_spContext; }
     IDWriteTextFormat*      ArcTextFormat() const { return m_resources->m_spArcTextFormat; }
     PathTextRenderer*       ArcTextRenderer() const { return m_resources->m_spPathTextRenderer; }
     FLOAT                   ArcFontSize() const { return m_resources->m_arcFontSize; }
+
+    bool                    CreateTextFormat(FLOAT fontsize, DWRITE_FONT_WEIGHT weight, IDWriteTextFormat** ppTextFormat) const;
 
     bool                    ShortenText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, FLOAT target, Shortened& out, int ellipsis=1);
     bool                    MeasureText(IDWriteTextFormat* format, const D2D1_RECT_F& rect, const WCHAR* text, size_t len, D2D1_SIZE_F& size, IDWriteTextLayout** ppLayout=nullptr);
@@ -124,8 +129,31 @@ private:
     std::unique_ptr<Resources>  m_resources;
 };
 
+struct SunburstMetrics
+{
+    SunburstMetrics(const Sunburst& sunburst);
+    SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds);
+    FLOAT get_thickness(size_t depth) const;
+
+    const FLOAT stroke;
+    const FLOAT margin;
+    const FLOAT indicator_thickness;
+    const FLOAT boundary_radius;
+    const FLOAT center_radius;
+    const FLOAT max_radius;
+    const FLOAT range_radius;
+#ifdef USE_MIN_ARC_LENGTH
+    const FLOAT min_arc;
+#endif
+
+private:
+    FLOAT thicknesses[MAX_SUNBURST_DEPTH];
+};
+
 class Sunburst
 {
+    friend struct SunburstMetrics;
+
     struct Arc
     {
         float               m_start;
@@ -145,10 +173,10 @@ public:
 
     bool                    OnDpiChanged(const DpiScaler& dpi);
     bool                    SetBounds(const D2D1_RECT_F& rect);
-    void                    BuildRings(const std::vector<std::shared_ptr<DirNode>>& roots);
-    void                    RenderRings(DirectHwndRenderTarget& target, const std::shared_ptr<Node>& highlight);
+    void                    BuildRings(const SunburstMetrics& mx, const std::vector<std::shared_ptr<DirNode>>& roots);
+    void                    RenderRings(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight);
     void                    FormatSize(ULONGLONG size, std::wstring& text, std::wstring& units, int places=-1);
-    std::shared_ptr<Node>   HitTest(POINT pt, bool* is_free=nullptr);
+    std::shared_ptr<Node>   HitTest(const SunburstMetrics& mx, POINT pt, bool* is_free=nullptr);
 
 protected:
     static D2D1_COLOR_F     MakeColor(const Arc& arc, size_t depth, bool highlight);
