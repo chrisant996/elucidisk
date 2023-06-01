@@ -832,6 +832,8 @@ void Buttons::OnMouseMessage(UINT msg, const POINT* pt)
 
 void Buttons::OnCancelMode()
 {
+    m_hover = -1;
+    m_suppress_desc = -1;
     if (m_pressed >= 0)
     {
         InvalidateButton(m_pressed);
