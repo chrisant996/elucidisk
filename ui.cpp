@@ -1358,6 +1358,9 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
     const WriteTextOptions options = bold ? WTO_HCENTER|WTO_CLIP : WTO_CLIP;
     t.WriteText(pTextFormat, rectLine.left, rectLine.top, rectLine, text, options);
 
+// TODO: Need a constant Title size, since Center will scale.  Can probably
+// simply rename Center to Title, and add a new Center TextFormat that's
+// created dynamically during WM_PAINT.
     rectLine.top += (bold ? t.CenterFontSize() : t.FontSize()) + padding;
 
     // Write node details.
@@ -1632,6 +1635,7 @@ LShowTotal:
                     text.append(TEXT(" "));
                     text.append(units);
 
+// TODO: Scale center fonts with center radius.
                     m_directRender.WriteText(m_directRender.CenterTextFormat(), 0.0f, 0.0f, bounds, text, WTO_HCENTER|WTO_VCENTER|WTO_REMEMBER_METRICS);
                     if (!label.empty())
                     {
@@ -1984,6 +1988,8 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
         CheckMenuItem(hmenuSub, IDM_OPTION_NAMES, MF_BYCOMMAND|MF_CHECKED);
     if (g_show_comparison_bar)
         CheckMenuItem(hmenuSub, IDM_OPTION_COMPBAR, MF_BYCOMMAND|MF_CHECKED);
+    if (g_show_proportional_area)
+        CheckMenuItem(hmenuSub, IDM_OPTION_PROPORTION, MF_BYCOMMAND|MF_CHECKED);
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
 #ifdef DEBUG
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
@@ -2087,6 +2093,11 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
     case IDM_OPTION_COMPBAR:
         g_show_comparison_bar = !g_show_comparison_bar;
         WriteRegLong(TEXT("ShowComparisonBar"), g_show_comparison_bar);
+        InvalidateRect(m_hwnd, nullptr, false);
+        break;
+    case IDM_OPTION_PROPORTION:
+        g_show_proportional_area = !g_show_proportional_area;
+        WriteRegLong(TEXT("ShowProportionalArea"), g_show_proportional_area);
         InvalidateRect(m_hwnd, nullptr, false);
         break;
 

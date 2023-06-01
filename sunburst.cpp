@@ -11,16 +11,17 @@ static ID2D1Factory* s_pD2DFactory = nullptr;
 static IDWriteFactory2* s_pDWriteFactory = nullptr;
 
 constexpr FLOAT M_PI = 3.14159265358979323846f;
-#ifdef USE_FIXED_CENTER_RADIUS
-constexpr int c_centerRadius = 50;
-#elif defined(USE_LARGER_RINGS)
-constexpr FLOAT c_centerRadiusRatio = 0.25f;
+constexpr FLOAT c_centerRadiusRatio = 0.24f;
 constexpr int c_centerRadiusMin = 50;
-#else
-constexpr FLOAT c_centerRadiusRatio = 0.25f;
-constexpr int c_centerRadiusMin = 50;
-#endif
+constexpr int c_centerRadiusMax = 100;
 constexpr FLOAT c_rotation = -90.0f;
+
+constexpr size_t c_max_depth = 20;
+
+// constexpr int c_max_thickness = 60;     // For proportional area.
+constexpr int c_thickness = 25;
+constexpr int c_retrograde = 1;
+constexpr int c_retrograde_depths = 10;
 
 constexpr WCHAR c_fontface[] = TEXT("Segoe UI");
 constexpr FLOAT c_fontsize = 10.0f;
@@ -35,13 +36,6 @@ constexpr FLOAT c_minArc = 2.5f;
 constexpr FLOAT c_minAngle = 1.1f;
 #endif
 
-#ifdef USE_PROPORTIONAL_RING_THICKNESS
-constexpr int c_max_thickness = 45;
-#else
-constexpr int c_thickness = 25;
-constexpr int c_retrograde = 1;
-constexpr int c_retrograde_depths = 10;
-#endif
 
 constexpr WCHAR c_ellipsis[] = TEXT("...");
 constexpr size_t c_ellipsis_len = _countof(c_ellipsis) - 1;
@@ -555,6 +549,16 @@ bool DirectHwndRenderTarget::WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT
 //----------------------------------------------------------------------------
 // SunburstMetrics.
 
+static FLOAT make_center_radius(const DpiScaler& dpi, const FLOAT boundary_radius)
+{
+    if (g_show_proportional_area)
+        return (std::min<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMax)),
+                std::max<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMin)),
+                boundary_radius * c_centerRadiusRatio)));
+    else
+        return FLOAT(dpi.Scale(c_centerRadiusMin));
+}
+
 struct SunburstMetrics
 {
     SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds)
@@ -562,52 +566,43 @@ struct SunburstMetrics
     , margin(FLOAT(dpi.Scale(5)))
     , indicator_thickness(FLOAT(dpi.Scale(4)))
     , boundary_radius(FLOAT(std::min<LONG>(LONG(bounds.right - bounds.left), LONG(bounds.bottom - bounds.top)) / 2 - margin))
-#ifdef USE_FIXED_CENTER_RADIUS
-    , center_radius(FLOAT(dpi.Scale(c_centerRadius)))
-#else
-    , center_radius(std::max<FLOAT>(boundary_radius * c_centerRadiusRatio, FLOAT(dpi.Scale(c_centerRadiusMin))))
-#endif
+    , center_radius(make_center_radius(dpi, boundary_radius))
     , max_radius(boundary_radius - (margin + indicator_thickness + margin))
     , range_radius(max_radius - center_radius)
 #ifdef USE_MIN_ARC_LENGTH
     , min_arc(dpi.ScaleF(c_minArc))
 #endif
-#ifndef USE_PROPORTIONAL_RING_THICKNESS
-    , thickness(FLOAT(dpi.Scale(c_thickness)))
-    , retrograde(FLOAT(dpi.Scale(c_retrograde)))
-#endif
     {
-#ifdef USE_PROPORTIONAL_RING_THICKNESS
-#ifdef USE_LARGER_RINGS
-        const FLOAT coefficient = 0.18f;
-        FLOAT thickness = std::min<FLOAT>(boundary_radius * coefficient, FLOAT(dpi.Scale(c_max_thickness)));
-        FLOAT retrograde = 0.25f;
-        for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
+        if (g_show_proportional_area)
         {
-            thicknesses[ii] = FLOAT(LONG(thickness));
-            thickness -= thickness * retrograde;
-            retrograde *= 0.666f;
+            FLOAT radius = center_radius;
+            // const FLOAT coefficient = 0.18f;
+            // FLOAT thickness = FLOAT(ceil(std::min<FLOAT>(center_radius * coefficient, 9999999999.9f)));//FLOAT(dpi.Scale(c_max_thickness)))));
+            const FLOAT coefficient = 0.67f;
+            FLOAT thickness = FLOAT(ceil(center_radius * coefficient));
+            for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
+            {
+                thicknesses[ii] = thickness;
+                const FLOAT outer = radius + thickness;
+                const FLOAT add = sqrt(2 * outer * outer - radius * radius) - outer;
+                thickness = FLOAT(floor(add));
+                radius = outer;
+            }
         }
-#else
-        FLOAT coefficient = 0.48f;
-        const FLOAT retrograde = 0.87f;
-        for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
+        else
         {
-            const FLOAT thickness = center_radius * coefficient;
-            thicknesses[ii] = thickness;
-            coefficient *= retrograde;
+            FLOAT thickness = FLOAT(dpi.Scale(c_thickness));
+            const FLOAT retrograde = FLOAT(dpi.Scale(c_retrograde));
+            for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
+                thicknesses[ii] = thickness - (retrograde * std::min<size_t>(ii, c_retrograde_depths));
         }
-#endif
-#endif
     }
 
     FLOAT get_thickness(size_t depth) const
     {
-#ifdef USE_PROPORTIONAL_RING_THICKNESS
-        return (depth < _countof(thicknesses)) ? thicknesses[depth] : 0.0f;
-#else
-        return thickness - (retrograde * std::min<size_t>(depth, c_retrograde_depths));
-#endif
+        if (depth < _countof(thicknesses))
+            return thicknesses[depth];
+        return g_show_proportional_area ? 0.0f : thicknesses[_countof(thicknesses) - 1];
     }
 
     const FLOAT stroke;
@@ -622,12 +617,7 @@ struct SunburstMetrics
 #endif
 
 private:
-#ifdef USE_PROPORTIONAL_RING_THICKNESS
-    FLOAT thicknesses[10];
-#else
-    const FLOAT thickness;
-    const FLOAT retrograde;
-#endif
+    FLOAT thicknesses[c_max_depth];
 };
 
 //----------------------------------------------------------------------------
@@ -671,9 +661,6 @@ void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node
     assert(arc.m_end - arc.m_start <= span);
 #endif
 
-// NOTE: USE_PROPORTIONAL_RING_THICKNESS interacts poorly with this.  The
-// async scan can cause the max depth to jitter, which rescales the whole
-// chart, and the arc filtering mechanisms can vacillate disorientingly.
 #ifdef USE_MIN_ARC_LENGTH
     if (ArcLength(arc.m_end - arc.m_start, outer_radius) >= min_arc)
 #else
@@ -801,7 +788,7 @@ void Sunburst::BuildRings(const std::vector<std::shared_ptr<DirNode>>& _roots)
 #endif
     }
 
-    while (m_rings.size() <= 20)
+    while (m_rings.size() <= c_max_depth)
     {
 #ifdef USE_MIN_ARC_LENGTH
         outer_radius += mx.get_thickness(m_rings.size() + 1);
