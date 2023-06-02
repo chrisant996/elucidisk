@@ -24,6 +24,8 @@ The name "Elucidisk" is a portmanteau of "elucidate" and "disk".
     - Show arcs with proportional area (e.g. two arcs for 50 GB directories will have the same area, even if they are at different distances from the center).
     - Show size comparison bar when hovering over an arc (the comparison bars are always in the center ring, so their sizes are comparable even when Proportional Area is turned off).
 - Show combined summary chart for all local drives.
+- Right click on an arc for a context menu of available actions.
+- Right click elsewhere for a context menu of configurable options (or press <kbd>Shift</kbd>-<kbd>F10</kbd> or <kbd>Apps</kbd> key).
 
 Please feel free to [open 
 issues](https://github.com/chrisant996/elucidisk/issues) for suggestions, 
