@@ -8,7 +8,7 @@ viewers.
 
 The name "Elucidisk" is a portmanteau of "elucidate" and "disk".
 
-![image](https://chrisant996.github.io/elucidisk/demo.png)
+![image](https://raw.githubusercontent.com/chrisant996/elucidisk/master/demo.png)
 
 ## What can it do?
 
