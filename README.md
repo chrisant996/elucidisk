@@ -8,7 +8,30 @@ viewers.
 
 The name "Elucidisk" is a portmanteau of "elucidate" and "disk".
 
+![image](https://chrisant996.github.io/elucidisk/demo.png)
+
 ## What can it do?
+
+- Scans drives or folders to find the size used.
+- Shows the results in a sunburst chart.
+- The chart has several configurable options:
+    - Use plain colors.
+    - Use rainbow colors (based on angle in the sunburst).
+    - Use heatmap colors (based on size).
+    - Show/hide names of files and directories in the sunburst (if the name fits).
+    - Show/hide free space for drives.
+    - Use the actual compressed size for compressed files, instead of the uncompressed size.
+    - Show arcs with proportional area (e.g. two arcs for 50 GB directories will have the same area, even if they are at different distances from the center).
+    - Show size comparison bar when hovering over an arc (the comparison bars are always in the center ring, so their sizes are comparable even when Proportional Area is turned off).
+- Show combined summary chart for all local drives.
+
+Please feel free to [open 
+issues](https://github.com/chrisant996/elucidisk/issues) for suggestions, 
+problem reports, or other feedback.
+
+If you want to contribute, fork the repo and create a topic branch, and send a 
+pull request for your topic branch.  Also, consider opening an issue first and 
+discussing the contribution you want to make.
 
 ## Why was it created?
 
