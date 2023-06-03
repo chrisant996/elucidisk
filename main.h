@@ -8,10 +8,14 @@
 #include <commctrl.h>
 #include "dpi.h"
 #include <string>
+#include <vector>
 #include <assert.h>
 
 LONG ReadRegLong(const WCHAR* name, LONG default_value);
 void WriteRegLong(const WCHAR* name, LONG value);
+
+bool ReadRegStrings(const WCHAR* name, std::vector<std::wstring>& out);
+void WriteRegStrings(const WCHAR* name, const std::vector<std::wstring>& in);
 
 extern bool g_use_compressed_size;
 extern bool g_show_free_space;

@@ -3,7 +3,23 @@
 
 #pragma once
 
+//----------------------------------------------------------------------------
+// Icons.
+
+#define IDI_MAIN                1
+
+//----------------------------------------------------------------------------
+// Context Menus.
+
 #define IDR_CONTEXT_MENU        1000
+
+//----------------------------------------------------------------------------
+// Dialogs.
+
+#define IDD_CONFIG_DONTSCAN     1000
+
+//----------------------------------------------------------------------------
+// Menu Commands.
 
 #define IDM_OPEN_DIRECTORY      2000
 #define IDM_OPEN_FILE           2001
@@ -19,6 +35,7 @@
 #define IDM_OPTION_NAMES        2102
 #define IDM_OPTION_COMPBAR      2103
 #define IDM_OPTION_PROPORTION   2104
+#define IDM_OPTION_DONTSCAN     2105
 
 #define IDM_OPTION_PLAIN        2170
 #define IDM_OPTION_RAINBOW      2171
@@ -42,5 +59,31 @@
 #define IDM_DRIVE_FIRST         2300
 #define IDM_DRIVE_LAST          2349
 
-#define IDI_MAIN                1
+//----------------------------------------------------------------------------
+// Generic Controls.
+
+#define IDC_STATIC1             501
+#define IDC_STATIC2             502
+#define IDC_STATIC3             503
+#define IDC_STATIC4             504
+#define IDC_STATIC5             505
+
+#define IDC_BUTTON1             521
+#define IDC_BUTTON2             522
+#define IDC_BUTTON3             523
+#define IDC_BUTTON4             524
+#define IDC_BUTTON5             525
+
+#define IDC_LIST1               541
+#define IDC_LIST2               542
+#define IDC_LIST3               543
+#define IDC_LIST4               544
+#define IDC_LIST5               545
+
+//----------------------------------------------------------------------------
+// Dialog Controls.
+
+#define IDC_DONTSCAN_ADD        IDC_BUTTON1
+#define IDC_DONTSCAN_REMOVE     IDC_BUTTON2
+#define IDC_DONTSCAN_LIST       IDC_LIST1
 

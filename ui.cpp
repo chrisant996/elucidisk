@@ -8,6 +8,7 @@
 #include "actions.h"
 #include "ui.h"
 #include "sunburst.h"
+#include "dontscan.h"
 #include "res.h"
 #include "version.h"
 #include <windowsx.h>
@@ -490,6 +491,11 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
             break;
 
         const LONG generation = pThis->m_generation;
+        ScanContext context = { pThis->m_ui_mutex, pThis->m_current, g_use_compressed_size };
+        ReadRegStrings(TEXT("DontScanDirectories"), context.dontscan);
+
+        for (auto& ignore : context.dontscan)
+            ensure_separator(ignore);
 
         while (generation == pThis->m_generation)
         {
@@ -550,8 +556,7 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
                 root = pThis->m_roots[pThis->m_cursor++];
             }
 
-            ScanFeedback feedback = { pThis->m_ui_mutex, pThis->m_current, g_use_compressed_size };
-            Scan(root, generation, &pThis->m_generation, feedback);
+            Scan(root, generation, &pThis->m_generation, context);
         }
     }
 }
@@ -2088,6 +2093,7 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
     case IDM_OPTION_COMPRESSED:
         g_use_compressed_size = !g_use_compressed_size;
         WriteRegLong(TEXT("UseCompressedSize"), g_use_compressed_size);
+LAskRescan:
         if (IDYES == MessageBox(m_hwnd, TEXT("The setting will take effect in the next scan.\n\nRescan now?"), TEXT("Confirm Rescan"), MB_YESNOCANCEL|MB_ICONQUESTION))
             Refresh(true/*all*/);
         break;
@@ -2110,6 +2116,11 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
         g_show_proportional_area = !g_show_proportional_area;
         WriteRegLong(TEXT("ShowProportionalArea"), g_show_proportional_area);
         InvalidateRect(m_hwnd, nullptr, false);
+        break;
+
+    case IDM_OPTION_DONTSCAN:
+        if (ConfigureDontScanFiles(m_hinst, m_hwnd))
+            goto LAskRescan;
         break;
 
     case IDM_OPTION_PLAIN:

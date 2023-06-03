@@ -44,9 +44,12 @@ int PASCAL WinMain(
 
     // Create UI.
 
+    INITCOMMONCONTROLSEX icce = { sizeof(icce), ICC_LISTVIEW_CLASSES };
+
     CoInitialize(0);
 
     InitCommonControls();
+    InitCommonControlsEx(&icce);
     InitializeD2D();
     InitializeDWrite();
 
@@ -116,6 +119,55 @@ void WriteRegLong(const WCHAR* name, LONG value)
         RegSetValueEx(hkey, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
         RegCloseKey(hkey);
     }
+}
+
+bool ReadRegStrings(const WCHAR* name, std::vector<std::wstring>& out)
+{
+    bool ok = false;
+    DWORD cb = 0;
+    out.clear();
+    if (ERROR_SUCCESS == RegGetValue(HKEY_CURRENT_USER, c_reg_root, name, RRF_RT_REG_MULTI_SZ, nullptr, nullptr, &cb))
+    {
+        WCHAR* data = (WCHAR*)calloc(cb, 1);
+        if (ERROR_SUCCESS == RegGetValue(HKEY_CURRENT_USER, c_reg_root, name, RRF_RT_REG_MULTI_SZ, nullptr, data, &cb))
+        {
+            for (const WCHAR* s = data; *s;)
+            {
+                const size_t len = wcslen(s);
+                out.emplace_back(s);
+                s += len + 1;
+                if (!*s)
+                    break;
+            }
+            ok = true;
+        }
+        free(data);
+    }
+    return ok;
+}
+
+void WriteRegStrings(const WCHAR* name, const std::vector<std::wstring>& in)
+{
+    DWORD cb = sizeof(WCHAR);
+    for (const auto& s : in)
+        cb += DWORD((s.length() + 1) * sizeof(WCHAR));
+
+    WCHAR* data = (WCHAR*)calloc(cb, 1);
+    WCHAR* to = data;
+    for (const auto& s : in)
+    {
+        memcpy(to, s.c_str(), (s.length() + 1) * sizeof(*s.c_str()));
+        to += s.length() + 1;
+    }
+
+    HKEY hkey;
+    if (ERROR_SUCCESS == RegCreateKey(HKEY_CURRENT_USER, c_reg_root, &hkey))
+    {
+        RegSetValueEx(hkey, name, 0, REG_MULTI_SZ, reinterpret_cast<const BYTE*>(data), cb);
+        RegCloseKey(hkey);
+    }
+
+    free(data);
 }
 
 void MakeMenuPretty(HMENU hmenu)

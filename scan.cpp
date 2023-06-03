@@ -67,25 +67,25 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
 }
 
 #ifdef DEBUG
-void AddColorWheelDir(const std::shared_ptr<DirNode> parent, const WCHAR* name, int depth, ScanFeedback& feedback)
+void AddColorWheelDir(const std::shared_ptr<DirNode> parent, const WCHAR* name, int depth, ScanContext& context)
 {
     depth--;
 
     if (!depth)
     {
-        std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+        std::lock_guard<std::recursive_mutex> lock(context.mutex);
 
         parent->AddFile(TEXT("x"), 1000);
     }
     else
     {
-        AddColorWheelDir(parent->AddDir(name), name, depth, feedback);
+        AddColorWheelDir(parent->AddDir(name), name, depth, context);
     }
 
     parent->Finish();
 }
 
-static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool include_free_space, ScanFeedback& feedback)
+static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool include_free_space, ScanContext& context)
 {
     switch (g_fake_data)
     {
@@ -94,7 +94,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
         {
             WCHAR sz[100];
             swprintf_s(sz, _countof(sz), TEXT("%u to %u"), ii, ii + 10);
-            AddColorWheelDir(root, sz, ii ? 10 : 11, feedback);
+            AddColorWheelDir(root, sz, ii ? 10 : 11, context);
         }
         break;
 
@@ -111,7 +111,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
                 dirs.emplace_back(root->AddDir(TEXT("Abc")));
                 dirs.emplace_back(root->AddDir(TEXT("Def")));
 
-                std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+                std::lock_guard<std::recursive_mutex> lock(context.mutex);
 
                 drive->AddFreeSpace(1000 * units, 2000 * units);
             }
@@ -121,7 +121,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
             }
             else
             {
-                std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+                std::lock_guard<std::recursive_mutex> lock(context.mutex);
 
                 root->AddFile(TEXT("Red"), 4000 * units);
                 root->AddFile(TEXT("Green"), 8000 * units);
@@ -134,7 +134,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
             }
 
             for (size_t ii = 0; ii < dirs.size(); ++ii)
-                FakeScan(dirs[ii], ii, false, feedback);
+                FakeScan(dirs[ii], ii, false, context);
         }
         break;
 
@@ -143,7 +143,7 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
 
     case FDM_ONLYDIRS:
         {
-            std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+            std::lock_guard<std::recursive_mutex> lock(context.mutex);
 
             std::vector<std::shared_ptr<DirNode>> dirs;
             dirs.emplace_back(root->AddDir(TEXT("Abc")));
@@ -160,14 +160,14 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
 }
 #endif
 
-void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, volatile LONG* current_generation, ScanFeedback& feedback)
+void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, volatile LONG* current_generation, ScanContext& context)
 {
     if (root->AsRecycleBin())
     {
-        std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+        std::lock_guard<std::recursive_mutex> lock(context.mutex);
 
-        feedback.current = root;
-        root->AsRecycleBin()->UpdateRecycleBin(feedback.mutex);
+        context.current = root;
+        root->AsRecycleBin()->UpdateRecycleBin(context.mutex);
         root->Finish();
         return;
     }
@@ -182,17 +182,18 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
     if (g_fake_data)
     {
         const bool was = SetFake(true);
-        FakeScan(root, 0, true, feedback);
+        FakeScan(root, 0, true, context);
         SetFake(was);
         return;
     }
 #endif
 
-    const bool use_compressed_size = feedback.use_compressed_size;
+    const bool use_compressed_size = context.use_compressed_size;
     const size_t base_path_len = find.length();
     find.append(TEXT("*"));
 
     std::vector<std::shared_ptr<DirNode>> dirs;
+    std::wstring test(find);
 
     WIN32_FIND_DATA fd;
     HANDLE hFind = FindFirstFile(find.c_str(), &fd);
@@ -203,7 +204,7 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
 
         do
         {
-            std::lock_guard<std::recursive_mutex> lock(feedback.mutex);
+            std::lock_guard<std::recursive_mutex> lock(context.mutex);
 
             const bool compressed = (use_compressed_size && (fd.dwFileAttributes & FILE_ATTRIBUTE_COMPRESSED));
 
@@ -216,6 +217,22 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
                 if (drive && !wcsicmp(fd.cFileName, TEXT("$recycle.bin")))
                     continue;
 
+                if (context.dontscan.size())
+                {
+                    bool match = false;
+                    test.resize(base_path_len);
+                    test.append(fd.cFileName);
+                    ensure_separator(test);
+                    for (const auto& ignore : context.dontscan)
+                    {
+                        match = !wcsicmp(ignore.c_str(), test.c_str());
+                        if (match)
+                            break;
+                    }
+                    if (match)
+                        continue;
+                }
+
                 dirs.emplace_back(root->AddDir(fd.cFileName));
                 assert(dirs.back());
 
@@ -224,7 +241,7 @@ void Scan(const std::shared_ptr<DirNode>& root, const LONG this_generation, vola
 
                 if (++num > 50 || GetTickCount() - tick > 50)
                 {
-                    feedback.current = dirs.back();
+                    context.current = dirs.back();
 LResetFeedbackInterval:
                     tick = GetTickCount();
                     num = 0;
@@ -255,7 +272,7 @@ LResetFeedbackInterval:
 
                 if (++num > 50 || GetTickCount() - tick > 50)
                 {
-                    feedback.current = file;
+                    context.current = file;
                     goto LResetFeedbackInterval;
                 }
             }
@@ -270,7 +287,7 @@ LResetFeedbackInterval:
     {
         if (this_generation != *current_generation)
             break;
-        Scan(dir, this_generation, current_generation, feedback);
+        Scan(dir, this_generation, current_generation, context);
     }
 
     if (this_generation == *current_generation && drive)
@@ -280,8 +297,8 @@ LResetFeedbackInterval:
 
         if (recycle)
         {
-            feedback.current = recycle;
-            recycle->UpdateRecycleBin(feedback.mutex);
+            context.current = recycle;
+            recycle->UpdateRecycleBin(context.mutex);
             recycle->Finish();
         }
     }
