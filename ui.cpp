@@ -1646,10 +1646,10 @@ LShowTotal:
 
                     SPI<IDWriteTextFormat> spLabelTextFormat;
                     SPI<IDWriteTextFormat> spCenterTextFormat;
-                    if (m_directRender.CreateTextFormat(0.25f * mx.center_radius, DWRITE_FONT_WEIGHT_BOLD, &spCenterTextFormat))
+                    if (m_directRender.CreateTextFormat(0.32f * mx.center_radius, DWRITE_FONT_WEIGHT_BOLD, &spCenterTextFormat))
                     {
                         m_directRender.WriteText(spCenterTextFormat, 0.0f, 0.0f, bounds, text, WTO_HCENTER|WTO_VCENTER|WTO_REMEMBER_METRICS);
-                        if (!label.empty() && m_directRender.CreateTextFormat(0.2f * mx.center_radius, DWRITE_FONT_WEIGHT_NORMAL, &spLabelTextFormat))
+                        if (!label.empty() && m_directRender.CreateTextFormat(0.24f * mx.center_radius, DWRITE_FONT_WEIGHT_NORMAL, &spLabelTextFormat))
                         {
                             D2D1_RECT_F rectLabel = bounds;
                             rectLabel.bottom = m_directRender.LastTextPosition().y;
