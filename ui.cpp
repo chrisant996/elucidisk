@@ -2321,6 +2321,9 @@ HWND MakeUi(HINSTANCE hinst, int argc, const WCHAR** argv)
     if (hwnd)
     {
         SetFocus(hwnd);
+// TODO: Maybe scan Summary if no args?
+// TODO: Maybe don't scan yet if no args?
+// TODO: Somehow show what the original choice was while scanning?
         p->Scan(argc, argv, false/*rescan*/);
     }
 
