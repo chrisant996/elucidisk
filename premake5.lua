@@ -66,6 +66,7 @@ project("elucidisk")
     language("c++")
     flags("fatalwarnings")
 
+    includedirs(".build/vs2019/bin") -- for the generated manifest.xml
     files("*.cpp")
     files("textonpath/*.cpp")
     files("main.rc")
@@ -213,10 +214,31 @@ local function have_required_tool(name, fallback)
     return nil
 end
 
+local function parse_version_file()
+    local ver_file = io.open("version.h")
+    if not ver_file then
+        error("Failed to open version.h file")
+    end
+    local vmaj, vmin
+    for line in ver_file:lines() do
+        if not vmaj then
+            vmaj = line:match("VERSION_MAJOR%s+([^%s+])")
+        end
+        if not vmin then
+            vmin = line:match("VERSION_MINOR%s+([^%s+])")
+        end
+    end
+    ver_file:close()
+    if not (vmaj and vmin) then
+        error("Failed to get version info")
+    end
+    return vmaj .. "." .. vmin
+end
+
 --------------------------------------------------------------------------------
 newaction {
     trigger = "release",
-    description = "Creates a release of elucidisk",
+    description = "Creates a release of Elucidisk",
     execute = function ()
         local premake = _PREMAKE_COMMAND
         local root_dir = path.getabsolute(".build/release") .. "/"
@@ -256,6 +278,7 @@ newaction {
         end
 
         -- Build everything.
+        exec(premake .. " manifest")
         build_code()
 
         local src = path.getabsolute(".build/" .. toolchain .. "/bin/release").."/"
@@ -266,27 +289,7 @@ newaction {
         end
 
         -- Parse version.
-        local ver_file = io.open("version.h")
-        if not ver_file then
-            error("Failed to open version.h file")
-        end
-        local vmaj, vmin, vpat
-        for line in ver_file:lines() do
-            if not vmaj then
-                vmaj = line:match("VERSION_MAJOR%s+([^%s+])")
-            end
-            if not vmin then
-                vmin = line:match("VERSION_MINOR%s+([^%s+])")
-            end
-            if not vpat then
-                vpat = line:match("VERSION_PATCH%s+([^%s+])")
-            end
-        end
-        ver_file:close()
-        if not (vmaj and vmin and vpat) then
-            error("Failed to get version info")
-        end
-        local version = vmaj .. "." .. vmin .. "." .. vpat
+        local version = parse_version_file()
 
         -- Now we know the version we can create our output directory.
         local target_dir = root_dir .. os.date("%Y%m%d_%H%M%S") .. "_" .. version .. "/"
@@ -313,6 +316,37 @@ newaction {
         if not any_warnings_or_failures then
             print("\x1b[0;32;1mRelease " .. version .. " built successfully.\x1b[m")
         end
+    end
+}
+
+--------------------------------------------------------------------------------
+newaction {
+    trigger = "manifest",
+    description = "Generates app manifest for Elucidisk",
+    execute = function ()
+        toolchain = _OPTIONS["vsver"] or "vs2019"
+        local outdir = path.getabsolute(".build/" .. toolchain .. "/bin").."/"
+
+        local version = parse_version_file()
+
+        local src = io.open("manifest_src.xml")
+        if not src then
+            error("Failed to open manifest_src.xml input file")
+        end
+        local dst = io.open(outdir .. "manifest.xml", "w")
+        if not dst then
+            error("Failed to open manifest.xml output file")
+        end
+
+        for line in src:lines("*L") do
+            line = line:gsub("%%VERSION%%", version)
+            dst:write(line)
+        end
+
+        src:close()
+        dst:close()
+
+        print("Generated manifest.xml in " .. outdir:gsub("/", "\\") .. ".")
     end
 }
 

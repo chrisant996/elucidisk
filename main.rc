@@ -6,6 +6,8 @@
 
 IDI_MAIN ICON DISCARDABLE "main.ico"
 
+1 24 "manifest.xml"
+
 IDR_CONTEXT_MENU MENU DISCARDABLE
 BEGIN
     POPUP ""
