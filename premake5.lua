@@ -222,10 +222,10 @@ local function parse_version_file()
     local vmaj, vmin
     for line in ver_file:lines() do
         if not vmaj then
-            vmaj = line:match("VERSION_MAJOR%s+([^%s+])")
+            vmaj = line:match("VERSION_MAJOR%s+([^%s]+)")
         end
         if not vmin then
-            vmin = line:match("VERSION_MINOR%s+([^%s+])")
+            vmin = line:match("VERSION_MINOR%s+([^%s]+)")
         end
     end
     ver_file:close()
