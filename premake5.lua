@@ -299,8 +299,8 @@ newaction {
         -- Package the release and the pdbs separately.
         os.chdir(src .. "/x64")
         if have_7z then
-            exec(have_7z .. " a -r  " .. target_dir .. "/elucidisk-x64-v" .. version .. "-pdb.zip  *.pdb")
-            exec(have_7z .. " a -r  " .. target_dir .. "/elucidisk-x64-v" .. version .. "-exe.zip  *.exe")
+            --exec(have_7z .. " a -r  " .. target_dir .. "elucidisk-v" .. version .. "-symbols.zip  *.pdb")
+            exec(have_7z .. " a -r  " .. target_dir .. "elucidisk-v" .. version .. ".zip  *.exe")
         end
 
         -- Tidy up code directory.
