@@ -185,6 +185,8 @@ bool get_drivelike_prefix(const WCHAR* _path, std::wstring& out)
     const WCHAR* past_unc;
     if (is_unc(path, &past_unc))
     {
+        if (is_separator(*past_unc))
+            ++past_unc;
         out.clear();
         out.append(path, past_unc - path);
         return true;
