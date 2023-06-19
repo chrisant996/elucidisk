@@ -450,7 +450,7 @@ bool DirectHwndRenderTarget::ShortenText(IDWriteTextFormat* format, const D2D1_R
     {
         D2D1_SIZE_F size;
         MeasureText(format, rect, text, len, size);
-        assert(size.width > rect.right - rect.left);
+        assert(size.width > target);
     }
 #endif
 
