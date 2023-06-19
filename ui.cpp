@@ -547,9 +547,9 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
                             // actually get a FreeSpaceNode if getting its
                             // free space fails.
                             pThis->m_current = std::make_shared<FreeSpaceNode>(drive->GetName(), 0, 0, nullptr);
-                        }
 
-                        drive->AddFreeSpace();
+                            drive->AddFreeSpace();
+                        }
                     }
                 }
 
