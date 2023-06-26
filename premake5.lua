@@ -86,6 +86,24 @@ local release_manifest = {
 }
 
 --------------------------------------------------------------------------------
+-- Some timestamp services for code signing:
+--  http://timestamp.digicert.com
+--  http://time.certum.pl
+--  http://sha256timestamp.ws.symantec.com/sha256/timestamp
+--  http://timestamp.comodoca.com/authenticode
+--  http://timestamp.comodoca.com
+--  http://timestamp.sectigo.com
+--  http://timestamp.globalsign.com
+--  http://tsa.starfieldtech.com
+--  http://timestamp.entrust.net/TSS/RFC3161sha2TS
+--  http://tsa.swisssign.net
+local cert_name = "Open Source Developer, Christopher Antos"
+--local timestamp_service = "http://timestamp.digicert.com"
+local timestamp_service = "http://time.certum.pl"
+local sign_command = string.format(' sign /n "%s" /fd sha256 /td sha256 /tr %s ', cert_name, timestamp_service)
+local verify_command = string.format(' verify /pa ')
+
+--------------------------------------------------------------------------------
 local function warn(msg)
     print("\x1b[0;33;1mWARNING: " .. msg.."\x1b[m")
     any_warnings_or_failures = true
@@ -238,7 +256,7 @@ end
 --------------------------------------------------------------------------------
 newaction {
     trigger = "release",
-    description = "Creates a release of Elucidisk",
+    description = "Elucidisk: Creates a release of Elucidisk",
     execute = function ()
         local premake = _PREMAKE_COMMAND
         local root_dir = path.getabsolute(".build/release") .. "/"
@@ -246,6 +264,7 @@ newaction {
         -- Check we have the tools we need.
         local have_msbuild = have_required_tool("msbuild", { "c:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\MSBuild\\Current\\Bin", "c:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\MSBuild\\Current\\Bin" })
         local have_7z = have_required_tool("7z", { "c:\\Program Files\\7-Zip", "c:\\Program Files (x86)\\7-Zip" })
+        local have_signtool = have_required_tool("signtool", { "c:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.22000.0\\x64" })
 
         -- Clone repo in release folder and checkout the specified version
         local code_dir = root_dir .. "~working/"
@@ -288,6 +307,36 @@ newaction {
             error("There's no build available in '" .. src .. "'")
         end
 
+        -- Now we can sign the files.
+        local sign = not _OPTIONS["nosign"]
+        local signed_ok -- nil means unknown, false means failed, true means ok.
+        local function sign_files(file_table)
+            local orig_dir = os.getcwd()
+            os.chdir(src)
+
+            local files = ""
+            for _, file in ipairs(file_table) do
+                files = files .. " " .. file
+            end
+
+            -- Sectigo requests to wait 15 seconds between timestamps.
+            -- Digicert and Certum don't mention any delay, so for now
+            -- just let signtool do the signatures and timestamps without
+            -- imposing external delays.
+            signed_ok = (exec('"' .. have_signtool .. sign_command .. files .. '"') and signed_ok ~= false) or false
+            -- Note: FAILS: cmd.exe /c "program" args "more args"
+            --    SUCCEEDS: cmd.exe /c ""program" args "more args""
+
+            -- Verify the signatures.
+            signed_ok = (exec(have_signtool .. verify_command .. files) and signed_ok ~= false) or false
+
+            os.chdir(orig_dir)
+        end
+
+        if sign then
+            sign_files({"elucidisk.exe"})
+        end
+
         -- Parse version.
         local version = parse_version_file()
 
@@ -313,6 +362,9 @@ newaction {
         print("\n\n")
         if not have_7z then     warn("7-ZIP NOT FOUND -- Packing to .zip files was skipped.") end
         if not x64_ok then      failed("x64 BUILD FAILED") end
+        if sign and not signed_ok then
+            failed("signing FAILED")
+        end
         if not any_warnings_or_failures then
             print("\x1b[0;32;1mRelease " .. version .. " built successfully.\x1b[m")
         end
@@ -320,9 +372,15 @@ newaction {
 }
 
 --------------------------------------------------------------------------------
+newoption {
+    trigger     = "nosign",
+    description = "Elucidisk: don't sign the release files"
+}
+
+--------------------------------------------------------------------------------
 newaction {
     trigger = "manifest",
-    description = "Generates app manifest for Elucidisk",
+    description = "Elucidisk: generate app manifest",
     execute = function ()
         toolchain = _OPTIONS["vsver"] or "vs2019"
         local outdir = path.getabsolute(".build/" .. toolchain .. "/bin").."/"
