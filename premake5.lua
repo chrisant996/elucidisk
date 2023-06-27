@@ -334,7 +334,7 @@ newaction {
         end
 
         if sign then
-            sign_files({"elucidisk.exe"})
+            sign_files({"x64\\elucidisk.exe"})
         end
 
         -- Parse version.
