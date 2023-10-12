@@ -282,6 +282,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
     SPI<IDWriteRenderingParams> spRenderingParams;
     ERRRET(m_spDWriteFactory->CreateRenderingParams(&spRenderingParams));
 
+#ifdef THIS_ISNT_WORKING_RIGHT_YET_AND_MIGHT_NOT_BE_NEEDED_ANYWAY
     // Custom text rendering param object is created that uses all default
     // values except for the rendering mode which is now set to outline.  The
     // outline mode is much faster in this case as every time text is relaid
@@ -290,12 +291,16 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
     // repopulating the cache with the new ones.  Since the text may rotate
     // differently from frame to frame, new glyph bitmaps would be generated
     // often anyway.
+    const DWRITE_RENDERING_MODE rendering_mode = DWRITE_RENDERING_MODE_OUTLINE;
+#else
+    const DWRITE_RENDERING_MODE rendering_mode = DWRITE_RENDERING_MODE_NATURAL;
+#endif
     ERRRET(m_spDWriteFactory->CreateCustomRenderingParams(
             spRenderingParams->GetGamma(),
             spRenderingParams->GetEnhancedContrast(),
             spRenderingParams->GetClearTypeLevel(),
             spRenderingParams->GetPixelGeometry(),
-            DWRITE_RENDERING_MODE_NATURAL,
+            rendering_mode,
             &m_spRenderingParams));
 
     m_fontSize = FLOAT(-dpi.PointSizeToHeight(c_fontsize));
