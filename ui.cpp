@@ -1547,11 +1547,11 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 // TODO: Dark theme.
                 pTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
 
-                const D2D1_SIZE_F rtSize = pTarget->GetSize();
+                const D2D1_SIZE_U rtSize = pTarget->GetPixelSize();
                 const D2D1_RECT_F rectClient = D2D1::RectF(FLOAT(rcClient.left), FLOAT(rcClient.top), FLOAT(rcClient.right), FLOAT(rcClient.bottom));
 
-                const FLOAT width = rtSize.width - (m_margin_reserve + m_dpi.Scale(32) + m_margin_reserve) * 2;
-                const FLOAT height = rtSize.height - (m_margin_reserve + m_top_reserve);
+                const FLOAT width = FLOAT(rtSize.width) - (m_margin_reserve + m_dpi.Scale(32) + m_margin_reserve) * 2;
+                const FLOAT height = FLOAT(rtSize.height) - (m_margin_reserve + m_top_reserve);
 
                 const FLOAT extent = std::min<FLOAT>(width, height);
                 FLOAT xx = (rtSize.width - extent) / 2;

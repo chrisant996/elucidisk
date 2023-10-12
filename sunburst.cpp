@@ -263,10 +263,14 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
     if (!m_spDWriteFactory && !GetDWriteFactory(&m_spDWriteFactory))
         return E_UNEXPECTED;
 
+    const FLOAT dpiF = dpi.ScaleF(96);
+
     ERRRET(m_spFactory->CreateHwndRenderTarget(
-        D2D1::RenderTargetProperties(),
+        D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(), dpiF, dpiF, D2D1_RENDER_TARGET_USAGE_GDI_COMPATIBLE, D2D1_FEATURE_LEVEL_DEFAULT),
         D2D1::HwndRenderTargetProperties(hwnd, size),
         &m_spTarget));
+
+    m_spTarget->SetDpi(dpiF, dpiF);
 
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spLineBrush));
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.5f), &m_spFileLineBrush));
@@ -341,6 +345,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
 
     ERRRET(m_spContext.HrQuery(m_spTarget));
     m_spContext->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
+    m_spContext->SetUnitMode(D2D1_UNIT_MODE_PIXELS);
     m_spContext->SetTextRenderingParams(m_spRenderingParams);
 
     m_spPathTextRenderer = new PathTextRenderer(dpi.ScaleF(96));
