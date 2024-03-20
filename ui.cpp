@@ -552,6 +552,22 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
 
                             drive->AddFreeSpace();
                         }
+                        else
+                        {
+                            // For each drive, update its free space.  This is
+                            // intended for the Rescan case.
+                            std::shared_ptr<DirNode> parent = root;
+                            while (parent)
+                            {
+                                std::shared_ptr<DirNode> up = parent->GetParent();
+                                if (up->IsDrive())
+                                {
+                                    up->AsDrive()->AddFreeSpace();
+                                    break;
+                                }
+                                parent = up;
+                            }
+                        }
                     }
                 }
 
