@@ -492,7 +492,9 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
 
         const LONG generation = pThis->m_generation;
         ScanContext context = { pThis->m_ui_mutex, pThis->m_current, g_use_compressed_size };
-        ReadRegStrings(TEXT("DontScanDirectories"), context.dontscan);
+
+        if (!g_show_dontscan_anyway)
+            ReadRegStrings(TEXT("DontScanDirectories"), context.dontscan);
 
         for (auto& ignore : context.dontscan)
             ensure_separator(ignore);
@@ -2006,6 +2008,8 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
         CheckMenuItem(hmenuSub, IDM_OPTION_COMPBAR, MF_BYCOMMAND|MF_CHECKED);
     if (g_show_proportional_area)
         CheckMenuItem(hmenuSub, IDM_OPTION_PROPORTION, MF_BYCOMMAND|MF_CHECKED);
+    if (g_show_dontscan_anyway)
+        CheckMenuItem(hmenuSub, IDM_OPTION_SCANDONTSCAN, MF_BYCOMMAND|MF_CHECKED);
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
 #ifdef DEBUG
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
@@ -2122,6 +2126,10 @@ LAskRescan:
         if (ConfigureDontScanFiles(m_hinst, m_hwnd))
             goto LAskRescan;
         break;
+    case IDM_OPTION_SCANDONTSCAN:
+        g_show_dontscan_anyway = !g_show_dontscan_anyway;
+        WriteRegLong(TEXT("ShowDontScanAnyway"), g_show_dontscan_anyway);
+        goto LAskRescan;
 
     case IDM_OPTION_PLAIN:
     case IDM_OPTION_RAINBOW:

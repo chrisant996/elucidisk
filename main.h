@@ -22,6 +22,7 @@ extern bool g_show_free_space;
 extern bool g_show_names;
 extern bool g_show_comparison_bar;
 extern bool g_show_proportional_area;
+extern bool g_show_dontscan_anyway;
 extern long g_color_mode;
 enum ColorMode { CM_PLAIN, CM_RAINBOW, CM_HEATMAP };
 #ifdef DEBUG

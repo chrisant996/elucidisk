@@ -36,6 +36,7 @@ BEGIN
         MENUITEM "Show Size Comparison &Bar", IDM_OPTION_COMPBAR
         MENUITEM SEPARATOR
         MENUITEM "Do Not Scan These Directories...", IDM_OPTION_DONTSCAN
+        MENUITEM "    ...But Scan Them Anyway", IDM_OPTION_SCANDONTSCAN
 #ifdef DEBUG
         MENUITEM SEPARATOR
         MENUITEM "Use Real Data",           IDM_OPTION_REALDATA
