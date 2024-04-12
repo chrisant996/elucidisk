@@ -560,6 +560,8 @@ void ScannerThread::ThreadProc(ScannerThread* pThis)
                             while (parent)
                             {
                                 std::shared_ptr<DirNode> up = parent->GetParent();
+                                if (!up)
+                                    break;
                                 if (up->IsDrive())
                                 {
                                     up->AsDrive()->AddFreeSpace();
