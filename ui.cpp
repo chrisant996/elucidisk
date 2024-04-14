@@ -729,6 +729,10 @@ public:
     void                    OnCancelMode();
     void                    SuppressDescriptionTemporarily(UINT id);
 
+#ifdef DEBUG
+    bool                    GetButtonRect(UINT id, RECT& rect);
+#endif
+
 protected:
     int                     HitTest(const POINT* pt) const;
     void                    InvalidateButton(int index) const;
@@ -865,6 +869,21 @@ void Buttons::OnCancelMode()
         m_pressed = -1;
     }
 }
+
+#ifdef DEBUG
+bool Buttons::GetButtonRect(UINT id, RECT& rect)
+{
+    for (const auto& btn : m_buttons)
+    {
+        if (btn.m_id == id)
+        {
+            rect = btn.m_rect;
+            return true;
+        }
+    }
+    return false;
+}
+#endif
 
 int Buttons::HitTest(const POINT* pt) const
 {
@@ -1468,11 +1487,15 @@ void MainWindow::DrawAppInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect)
         static int s_counter = 0;
         s_counter++;
 
+        RECT summaryRect;
+        m_buttons.GetButtonRect(IDM_SUMMARY, summaryRect);
+
         auto rectDbgInfo = rect;
         rectDbgInfo.bottom -= m_margin_reserve;
+        rectDbgInfo.left = summaryRect.right + m_dpi.ScaleF(24);
 
         swprintf_s(sz, _countof(sz), TEXT("%u nodes / %u paints"), CountNodes(), s_counter);
-        t.WriteText(t.TextFormat(), 0.0f, 0.0f, rectDbgInfo, sz, wcslen(sz), WTO_HCENTER|WTO_BOTTOM_ALIGN);
+        t.WriteText(t.TextFormat(), rectDbgInfo.left, 0.0f, rectDbgInfo, sz, wcslen(sz), WTO_BOTTOM_ALIGN);
     }
 #endif
 
