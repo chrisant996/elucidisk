@@ -113,7 +113,8 @@ static void FakeScan(const std::shared_ptr<DirNode> root, size_t index, bool inc
 
                 std::lock_guard<std::recursive_mutex> lock(context.mutex);
 
-                drive->AddFreeSpace(1000 * units, 2000 * units);
+                if (drive)
+                    drive->AddFreeSpace(1000 * units, 2000 * units);
             }
             else if (root->GetParent() && root->GetParent()->GetParent())
             {
