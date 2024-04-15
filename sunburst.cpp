@@ -12,6 +12,7 @@ static IDWriteFactory2* s_pDWriteFactory = nullptr;
 
 constexpr FLOAT M_PI = 3.14159265358979323846f;
 constexpr FLOAT c_centerRadiusRatio = 0.24f;
+constexpr FLOAT c_centerRadiusRatioNonProp = 0.15f;
 constexpr int c_centerRadiusMin = 50;
 constexpr int c_centerRadiusMax = 100;
 constexpr FLOAT c_rotation = -90.0f;
@@ -20,6 +21,7 @@ constexpr size_t c_max_depth = 20;
 
 // constexpr int c_max_thickness = 60;     // For proportional area.
 constexpr int c_thickness = 25;
+constexpr FLOAT c_thicknessRatioNonProp = 0.055f;
 constexpr int c_retrograde = 1;
 constexpr int c_retrograde_depths = 10;
 
@@ -585,7 +587,8 @@ static FLOAT make_center_radius(const DpiScaler& dpi, const FLOAT boundary_radiu
                 std::max<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMin)),
                 boundary_radius * c_centerRadiusRatio)));
     else
-        return FLOAT(dpi.Scale(c_centerRadiusMin));
+        return std::max<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMin)),
+                               boundary_radius * c_centerRadiusRatioNonProp);
 }
 
 SunburstMetrics::SunburstMetrics(const Sunburst& sunburst)
@@ -623,7 +626,8 @@ SunburstMetrics::SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds
     }
     else
     {
-        FLOAT thickness = FLOAT(dpi.Scale(c_thickness));
+        FLOAT thickness = std::max<FLOAT>(FLOAT(dpi.Scale(c_thickness)),
+                                          boundary_radius * c_thicknessRatioNonProp);
         const FLOAT retrograde = FLOAT(dpi.Scale(c_retrograde));
         for (size_t ii = 0; ii < _countof(thicknesses); ++ii)
             thicknesses[ii] = thickness - (retrograde * std::min<size_t>(ii, c_retrograde_depths));
