@@ -132,7 +132,7 @@ private:
 struct SunburstMetrics
 {
     SunburstMetrics(const Sunburst& sunburst);
-    SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds);
+    SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds, FLOAT max_extent);
     FLOAT get_thickness(size_t depth) const;
 
     const FLOAT stroke;
@@ -172,7 +172,7 @@ public:
                             ~Sunburst();
 
     bool                    OnDpiChanged(const DpiScaler& dpi);
-    bool                    SetBounds(const D2D1_RECT_F& rect);
+    bool                    SetBounds(const D2D1_RECT_F& rect, FLOAT max_extent);
     void                    BuildRings(const SunburstMetrics& mx, const std::vector<std::shared_ptr<DirNode>>& roots);
     void                    RenderRings(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight);
     void                    FormatSize(ULONGLONG size, std::wstring& text, std::wstring& units, int places=-1);
@@ -196,6 +196,7 @@ protected:
 private:
     DpiScaler               m_dpi;
     FLOAT                   m_min_arc_text_len = 0;
+    FLOAT                   m_max_extent = 0;
     D2D1_RECT_F             m_bounds = D2D1::RectF();
     D2D1_POINT_2F           m_center = D2D1::Point2F();
     UnitScale               m_units = UnitScale::MB;

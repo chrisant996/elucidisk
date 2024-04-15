@@ -12,6 +12,7 @@ static IDWriteFactory2* s_pDWriteFactory = nullptr;
 
 constexpr FLOAT M_PI = 3.14159265358979323846f;
 constexpr FLOAT c_centerRadiusRatio = 0.24f;
+constexpr FLOAT c_centerRadiusRatioMax = 0.096125f;
 constexpr FLOAT c_centerRadiusRatioNonProp = 0.15f;
 constexpr int c_centerRadiusMin = 50;
 constexpr int c_centerRadiusMax = 100;
@@ -580,28 +581,33 @@ bool DirectHwndRenderTarget::WriteText(IDWriteTextFormat* format, FLOAT x, FLOAT
 //----------------------------------------------------------------------------
 // SunburstMetrics.
 
-static FLOAT make_center_radius(const DpiScaler& dpi, const FLOAT boundary_radius)
+static FLOAT make_center_radius(const DpiScaler& dpi, const FLOAT boundary_radius, const FLOAT max_extent)
 {
     if (g_show_proportional_area)
-        return (std::min<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMax)),
-                std::max<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMin)),
-                boundary_radius * c_centerRadiusRatio)));
+    {
+        // winR and maxR use different ratios to accelerate growth of radius
+        // when resizing the window larger, but with a maximum beyond which it
+        // stops growing.
+        const FLOAT winR = std::max<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMin)), boundary_radius * c_centerRadiusRatio);
+        const FLOAT maxR = std::max<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMin)), max_extent * c_centerRadiusRatioMax);
+        return std::min<FLOAT>(winR, maxR);
+    }
     else
         return std::max<FLOAT>(FLOAT(dpi.Scale(c_centerRadiusMin)),
                                boundary_radius * c_centerRadiusRatioNonProp);
 }
 
 SunburstMetrics::SunburstMetrics(const Sunburst& sunburst)
-: SunburstMetrics(sunburst.m_dpi, sunburst.m_bounds)
+: SunburstMetrics(sunburst.m_dpi, sunburst.m_bounds, sunburst.m_max_extent)
 {
 }
 
-SunburstMetrics::SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds)
+SunburstMetrics::SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds, FLOAT max_extent)
 : stroke(std::max<FLOAT>(FLOAT(dpi.Scale(1)), FLOAT(1)))
 , margin(FLOAT(dpi.Scale(5)))
 , indicator_thickness(FLOAT(dpi.Scale(4)))
 , boundary_radius(FLOAT(std::min<LONG>(LONG(bounds.right - bounds.left), LONG(bounds.bottom - bounds.top)) / 2 - margin))
-, center_radius(make_center_radius(dpi, boundary_radius))
+, center_radius(make_center_radius(dpi, boundary_radius, max_extent))
 , max_radius(boundary_radius - (margin + indicator_thickness + margin))
 , range_radius(max_radius - center_radius)
 #ifdef USE_MIN_ARC_LENGTH
@@ -652,12 +658,14 @@ Sunburst::~Sunburst()
 {
 }
 
-bool Sunburst::SetBounds(const D2D1_RECT_F& rect)
+bool Sunburst::SetBounds(const D2D1_RECT_F& rect, const FLOAT max_extent)
 {
     static_assert(sizeof(m_bounds) == sizeof(rect), "data size mismatch");
-    const bool changed = !!memcmp(&m_bounds, &rect, sizeof(rect));
+    const bool changed = (!!memcmp(&m_bounds, &rect, sizeof(rect)) ||
+                          m_max_extent != max_extent);
 
     m_bounds = rect;
+    m_max_extent = FLOAT(max_extent);
     m_center.x = floor((rect.left + rect.right) / 2.0f);
     m_center.y = floor((rect.top + rect.bottom) / 2.0f);
 

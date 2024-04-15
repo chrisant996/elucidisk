@@ -1008,6 +1008,8 @@ private:
     SizeTracker             m_sizeTracker;
     LONG                    m_cxNumberArea = 0;
     bool                    m_inWmDpiChanged = false;
+    RECT                    m_rcMonitor = {};
+    LONG                    m_max_extent = 0;
 
     std::recursive_mutex    m_ui_mutex; // Synchronize m_scanner vs m_sunburst.
 
@@ -1605,12 +1607,12 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 const size_t gen = ++s_gen;
 
                 Sunburst sunburst;
-                SunburstMetrics mx(m_dpi, bounds);
+                SunburstMetrics mx(m_dpi, bounds, FLOAT(m_max_extent));
                 {
                     std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
 
                     sunburst.OnDpiChanged(m_dpi);
-                    sunburst.SetBounds(bounds);
+                    sunburst.SetBounds(bounds, FLOAT(m_max_extent));
 
                     // FUTURE: Only rebuild rings when something has changed?
                     sunburst.BuildRings(mx, m_roots);
@@ -1833,6 +1835,18 @@ LShowTotal:
 
     case WM_SIZE:
         {
+            MONITORINFO info = { sizeof(info) };
+            HMONITOR hmon = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTOPRIMARY);
+            GetMonitorInfo(hmon, &info);
+
+            if (memcmp(&m_rcMonitor, &info.rcWork, sizeof(m_rcMonitor)) != 0)
+            {
+                m_rcMonitor = info.rcWork;
+                m_max_extent = std::min<LONG>(info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
+                m_max_extent = std::max<LONG>(m_max_extent, 480);
+                m_directRender.ReleaseDeviceResources();
+            }
+
             m_directRender.ResizeDeviceResources();
 
             RECT rcClient;
