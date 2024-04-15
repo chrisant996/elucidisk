@@ -594,7 +594,7 @@ SunburstMetrics::SunburstMetrics(const Sunburst& sunburst)
 }
 
 SunburstMetrics::SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds)
-: stroke(FLOAT(dpi.Scale(1)))
+: stroke(std::max<FLOAT>(FLOAT(dpi.Scale(1)), FLOAT(1)))
 , margin(FLOAT(dpi.Scale(5)))
 , indicator_thickness(FLOAT(dpi.Scale(4)))
 , boundary_radius(FLOAT(std::min<LONG>(LONG(bounds.right - bounds.left), LONG(bounds.bottom - bounds.top)) / 2 - margin))

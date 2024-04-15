@@ -812,7 +812,7 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
         target.FillBrush()->SetColor(D2D1::ColorF(pressed ? D2D1::ColorF::LightSteelBlue : D2D1::ColorF::White));
         target.Target()->FillRectangle(rectF, target.FillBrush());
 
-        const FLOAT stroke = FLOAT(m_dpi.Scale(1));
+        const FLOAT stroke = std::max<FLOAT>(FLOAT(m_dpi.Scale(1)), FLOAT(1));
         inset_rect_for_stroke(rectF, stroke);
         target.FillBrush()->SetColor(D2D1::ColorF((pressed || m_hover == ii) ? D2D1::ColorF::Black : 0xD0D0D0));
         target.Target()->DrawRectangle(rectF, target.FillBrush(), stroke);
