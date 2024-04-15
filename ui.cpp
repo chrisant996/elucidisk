@@ -1329,6 +1329,13 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
             text.append(is_free ? TEXT("Free on ") : TEXT("Used on "));
             show_free = is_free;
         }
+#ifdef DEBUG
+        if (g_fake_data == FDM_COLORWHEEL)
+        {
+            text.clear();
+            show_free = false;
+        }
+#endif
         text.append(path);
         strip_separator(text);
     }
@@ -1435,6 +1442,14 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
 
         if (has_bytes)
         {
+#ifdef DEBUG
+            if (g_fake_data == FDM_COLORWHEEL)
+            {
+                if (node->AsDir())
+                    bytes = node->AsDir()->GetSize();
+            }
+#endif
+
             D2D1_COLOR_F oldColor = t.TextBrush()->GetColor();
             m_sunburst.FormatSize(bytes, text, units);
 
@@ -1640,7 +1655,16 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                     {
 LShowTotal:
                         for (const auto root : m_roots)
+                        {
+#ifdef DEBUG
+                            if (g_fake_data == FDM_COLORWHEEL)
+                            {
+                                bytes += root->GetSize();
+                                continue;
+                            }
+#endif
                             bytes += root->GetEffectiveSize();
+                        }
 
                         if (m_roots.size() > 1)
                             label = TEXT("Total");
@@ -1660,9 +1684,17 @@ LShowTotal:
                     {
                         std::shared_ptr<FreeSpaceNode> free = m_hover_node->AsDir()->GetFreeSpace();
                         bytes = (free && m_hover_free) ? free->GetFreeSize() : m_hover_node->AsDir()->GetEffectiveSize();
+#ifdef DEBUG
+                        if (g_fake_data == FDM_COLORWHEEL)
+                            bytes = m_hover_node->AsDir()->GetSize();
+#endif
                         if (free)
                         {
                             label = m_hover_free ? TEXT("Free on ") : TEXT("Used on ");
+#ifdef DEBUG
+                            if (g_fake_data == FDM_COLORWHEEL)
+                                label.clear();
+#endif
                             label.append(m_hover_node->GetName());
                             strip_separator(label);
                         }

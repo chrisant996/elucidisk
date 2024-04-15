@@ -716,11 +716,21 @@ void Sunburst::BuildRings(const SunburstMetrics& mx, const std::vector<std::shar
     m_free_angles.clear();
 
     {
+        bool show_free_space = g_show_free_space;
+#ifdef DEBUG
+        if (g_fake_data == FDM_COLORWHEEL)
+        {
+            // This is important to prevent free space in the root, so that
+            // the color wheel uses the full 360 degrees.
+            show_free_space = false;
+        }
+#endif
+
         double grand_total = 0;
         for (const auto dir : roots)
         {
             const double size = double(dir->GetSize());
-            std::shared_ptr<FreeSpaceNode> free = g_show_free_space ? dir->GetFreeSpace() : nullptr;
+            std::shared_ptr<FreeSpaceNode> free = show_free_space ? dir->GetFreeSpace() : nullptr;
             if (free)
             {
                 totals.emplace_back(double(free->GetTotalSize()));
@@ -756,7 +766,7 @@ void Sunburst::BuildRings(const SunburstMetrics& mx, const std::vector<std::shar
             m_start_angles.emplace_back(start);
             spans.emplace_back(mid - start);
 
-            if (g_show_free_space)
+            if (show_free_space)
             {
                 std::shared_ptr<FreeSpaceNode> free = m_roots[ii]->GetFreeSpace();
                 if (free)

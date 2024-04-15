@@ -75,7 +75,7 @@ void AddColorWheelDir(const std::shared_ptr<DirNode> parent, const WCHAR* name, 
     {
         std::lock_guard<std::recursive_mutex> lock(context.mutex);
 
-        parent->AddFile(TEXT("x"), 1000);
+        parent->AddFile(TEXT("x"), 1024);
     }
     else
     {
