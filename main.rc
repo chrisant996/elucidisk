@@ -44,6 +44,7 @@ BEGIN
         MENUITEM "Use Color Wheel Data",    IDM_OPTION_COLORWHEEL
         MENUITEM "Use Empty Drive Data",    IDM_OPTION_EMPTYDRIVE
         MENUITEM "Use Only Dirs Data",      IDM_OPTION_ONLYDIRS
+        MENUITEM "Use Oklab Color Space",   IDM_OPTION_OKLAB
 #endif
     END
 END

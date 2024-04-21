@@ -48,6 +48,7 @@
 #define IDM_OPTION_COLORWHEEL   2182
 #define IDM_OPTION_EMPTYDRIVE   2183
 #define IDM_OPTION_ONLYDIRS     2184
+#define IDM_OPTION_OKLAB        2185
 #endif
 
 #define IDM_REFRESH             2200

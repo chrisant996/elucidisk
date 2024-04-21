@@ -29,6 +29,11 @@ HRESULT InitializeDWrite();
 bool GetD2DFactory(ID2D1Factory** ppFactory);
 bool GetDWriteFactory(IDWriteFactory2** ppFactory);
 
+#ifdef DEBUG
+bool GetUseOklab();
+void SetUseOklab(bool use);
+#endif
+
 enum WriteTextOptions
 {
     WTO_NONE                = 0x0000,

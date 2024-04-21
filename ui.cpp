@@ -2100,6 +2100,8 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
 #ifdef DEBUG
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
+    if (GetUseOklab())
+        CheckMenuItem(hmenuSub, IDM_OPTION_OKLAB, MF_BYCOMMAND|MF_CHECKED);
     if (g_fake_data)
     {
         EnableMenuItem(hmenuSub, IDM_OPEN_FILE, MF_BYCOMMAND|MF_GRAYED);
@@ -2247,6 +2249,10 @@ LAskRescan:
                 Refresh(true/*all*/);
             }
         }
+        break;
+    case IDM_OPTION_OKLAB:
+        SetUseOklab(!GetUseOklab());
+        InvalidateRect(m_hwnd, nullptr, false);
         break;
 #endif
     }

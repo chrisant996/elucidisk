@@ -10,6 +10,12 @@
 static ID2D1Factory* s_pD2DFactory = nullptr;
 static IDWriteFactory2* s_pDWriteFactory = nullptr;
 
+#ifdef DEBUG
+static bool s_fOklab = false;
+bool GetUseOklab() { return s_fOklab; }
+void SetUseOklab(bool use) { s_fOklab = use; }
+#endif
+
 constexpr FLOAT M_PI = 3.14159265358979323846f;
 constexpr FLOAT c_centerRadiusRatio = 0.24f;
 constexpr FLOAT c_centerRadiusRatioMax = 0.096125f;
@@ -83,6 +89,15 @@ static FLOAT ArcLength(FLOAT angle, FLOAT radius)
 //----------------------------------------------------------------------------
 // HSLColorType.
 
+template <typename T> T clamp(T value, T min, T max)
+{
+    value = value < min ? min : value;
+    return value > max ? max : value;
+}
+
+namespace colorspace
+{
+
 static const FLOAT c_maxHue = 360;
 static const FLOAT c_maxSat = 240;
 static const FLOAT c_maxLum = 240;
@@ -100,6 +115,8 @@ struct HSLColorType
 
     void        AdjustSaturation(FLOAT delta);
     void        AdjustLuminance(FLOAT delta);
+
+    void        FixLuminance();
 
     FLOAT h;    // 0..c_maxHue
     FLOAT s;    // 0..c_maxSat
@@ -184,9 +201,9 @@ static BYTE ToByteValue(FLOAT rm1, FLOAT rm2, FLOAT h)
 
 COLORREF HSLColorType::ToRGB() const
 {
-    const FLOAT validHue = std::min<FLOAT>(std::max<FLOAT>(0, h), c_maxHue);
-    const FLOAT validSat = std::min<FLOAT>(std::max<FLOAT>(0, s), c_maxSat);
-    const FLOAT validLum = std::min<FLOAT>(std::max<FLOAT>(0, l), c_maxLum);
+    const FLOAT validHue = clamp<FLOAT>(h, 0, c_maxHue);
+    const FLOAT validSat = clamp<FLOAT>(s, 0, c_maxSat);
+    const FLOAT validLum = clamp<FLOAT>(l, 0, c_maxLum);
 
     const FLOAT satRatio = validSat / c_maxSat;
     const FLOAT lumRatio = validLum / c_maxLum;
@@ -250,6 +267,145 @@ void HSLColorType::AdjustLuminance(FLOAT delta)
     else
         l = std::min<FLOAT>(l, c_maxLum);
 }
+
+void HSLColorType::FixLuminance()
+{
+    // Luminance in the blue/purple range of hue in the HSL color space is
+    // disproportionate to the rest of the hue range.  This attempts to
+    // compensate -- primarily so that text can have legible contrast.
+    const float lo = 180.0f;
+    const float hi = 300.0f;
+    const float gravity = c_maxLum * 0.65f;
+    if (h >= lo && h <= hi)
+    {
+        constexpr float pi = 3.14159f;
+        const float hue_cos = cos((h - lo) * 2 * pi / (hi - lo));
+        const float transform = (1.0f - hue_cos) / 2;
+        if (l < gravity)
+            l += transform * (gravity - l) * 0.8f;
+        else
+            l += transform * (gravity - l) * 0.6f;
+    }
+}
+
+}; // namespace colorspace
+
+//----------------------------------------------------------------------------
+// Oklab color space.
+
+#ifdef DEBUG
+
+namespace colorspace
+{
+
+// The Oklab code here is based on https://bottosson.github.io/posts/oklab, in
+// the public domain (and also available under the MIT License).
+
+struct Oklab
+{
+    Oklab() = default;
+    Oklab(COLORREF cr) { from_rgb(cr); }
+
+    void from_rgb(COLORREF cr);
+    COLORREF to_rgb() const;
+
+    float L = 0;
+    float a = 0;
+    float b = 0;
+
+    inline static float rgb_to_linear(BYTE val)
+    {
+        float x = float(val) / 255.0f;
+        return (x > 0.04045f) ? std::pow((x + 0.055f) / 1.055f, 2.4f) : (x / 12.92f);
+    }
+
+    inline static BYTE linear_to_rgb(float val)
+    {
+        float x = (val >= 0.0031308f) ? (1.055f * std::pow(val, 1.0f / 2.4f) - 0.055f) : (12.92f * val);
+        return BYTE(clamp(int(x * 255), 0, 255));
+    }
+
+    void get_Ch(float& C, float& h) const
+    {
+        C = sqrtf(a*a + b*b);
+
+#ifdef USE_NATIVE_OKLAB_HUE
+        h = h * 180.0f / M_PI;
+        h -= M_PI / 2; // Oklab hue is 45 degrees different from HSL hue.
+        if (h < 0.0f)
+            h += 360.0f;
+        assert(h >= 0.0f);
+        assert(h <= 360.0f);
+#else
+        HSLColorType hsl(to_rgb());
+        h = hsl.h;
+#endif
+    }
+
+    void set_Ch(float C, float h)
+    {
+        assert(h >= 0.0f);
+        assert(h <= c_maxHue);
+
+#ifdef USE_NATIVE_OKLAB_HUE
+        h += 45.0f;
+        if (h >= 180.0f)
+            h -= 360.0f;
+        h = h * M_PI / 180.0f;
+#else
+        HSLColorType hsl;
+        hsl.h = h;
+        hsl.s = c_maxSat;
+        hsl.l = c_maxLum / 2;
+
+        Oklab tmp(hsl.ToRGB());
+        h = atan2(tmp.b, tmp.a);
+#endif
+
+        a = C * cos(h);
+        b = C * sin(h);
+    }
+};
+
+void Oklab::from_rgb(COLORREF cr)
+{
+    float _r = rgb_to_linear(GetRValue(cr));
+    float _g = rgb_to_linear(GetGValue(cr));
+    float _b = rgb_to_linear(GetBValue(cr));
+
+    float l = 0.4122214708f * _r + 0.5363325363f * _g + 0.0514459929f * _b;
+    float m = 0.2119034982f * _r + 0.6806995451f * _g + 0.1073969566f * _b;
+    float s = 0.0883024619f * _r + 0.2817188376f * _g + 0.6299787005f * _b;
+
+    l = std::cbrt(l);
+    m = std::cbrt(m);
+    s = std::cbrt(s);
+
+    L = 0.2104542553f * l + 0.7936177850f * m - 0.0040720468f * s;
+    a = 1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s;
+    b = 0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s;
+}
+
+COLORREF Oklab::to_rgb() const
+{
+    float l = L + 0.3963377774f * a + 0.2158037573f * b;
+    float m = L - 0.1055613458f * a - 0.0638541728f * b;
+    float s = L - 0.0894841775f * a - 1.2914855480f * b;
+
+    l = l * l * l;
+    m = m * m * m;
+    s = s * s * s;
+
+    float _r = +4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s;
+    float _g = -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s;
+    float _b = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
+
+    return RGB(linear_to_rgb(_r), linear_to_rgb(_g), linear_to_rgb(_b));
+}
+
+}; // namespace colorspace
+
+#endif
 
 //----------------------------------------------------------------------------
 // DirectHwndRenderTarget.
@@ -934,36 +1090,43 @@ static D2D1_POINT_2F MakePoint(const D2D1_POINT_2F& center, FLOAT radius, FLOAT 
     return point;
 }
 
-COLORREF FixLuminance(COLORREF cr)
+
+static COLORREF color_from_angle_depth(FLOAT angle, size_t depth, bool highlight, bool file)
 {
-    // Luminance in the blue/purple range of hue in the HSL color space is
-    // disproportionate to the rest of the hue range.  This attempts to
-    // compensate -- primarily so that text can have legible contrast.
-    const float lo = 180.0f;
-    const float hi = 300.0f;
-    const float gravity = c_maxLum * 0.65f;
-    HSLColorType hsl(cr);
-    if (hsl.h >= lo && hsl.h <= hi)
+#ifdef DEBUG
+    if (s_fOklab)
     {
-        constexpr float pi = 3.14159f;
-        const float hue_cos = cos((hsl.h - lo) * 2 * pi / (hi - lo));
-        const float transform = (1.0f - hue_cos) / 2;
-        if (hsl.l < gravity)
-            hsl.l += transform * (gravity - hsl.l) * 0.8f;
-        else
-            hsl.l += transform * (gravity - hsl.l) * 0.6f;
+        colorspace::Oklab oklab(RGB(0, 255, 0));
+
+        float C;
+        float h;
+        oklab.get_Ch(C, h);
+
+        h = clamp<FLOAT>(angle, 0.0f, 360.0f);
+        C = C * (file ? 0.7f : 0.95f) - (FLOAT(depth) * C / 25);//20);
+        if (highlight)
+            C = C + 0.1f;
+
+        oklab.set_Ch(C, h);
+
+        oklab.L = (file ? 0.9f : 0.5f) + (FLOAT(depth) * (oklab.L / 20));
+        //oklab.L = (file ? 0.8f : 0.7f) + (FLOAT(depth) * (1.0f / 30.0f));
+
+        if (highlight)
+            oklab.L = 0.8f;//-= 0.05f;
+
+        return oklab.to_rgb();
+    }
+    else
+#endif
+    {
+        colorspace::HSLColorType hsl;
+        hsl.h = angle * colorspace::c_maxHue / 360;
+        hsl.s = highlight ? colorspace::c_maxSat : (colorspace::c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (colorspace::c_maxSat / 25));
+        hsl.l = highlight ? colorspace::c_maxLum*3/5 : (colorspace::c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (colorspace::c_maxLum / 30));
+        hsl.FixLuminance();
         return hsl.ToRGB();
     }
-    return cr;
-}
-
-static COLORREF apply_depth_to_hue(FLOAT hue, size_t depth, bool highlight, bool file)
-{
-    HSLColorType hsl;
-    hsl.h = hue;
-    hsl.s = highlight ? c_maxSat : (c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (c_maxSat / 25));
-    hsl.l = highlight ? c_maxLum*3/5 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 30));
-    return hsl.ToRGB();
 }
 
 inline BYTE blend(BYTE a, BYTE b, FLOAT ratio)
@@ -995,13 +1158,7 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
     case CM_RAINBOW:
         {
             const FLOAT angle = (arc.m_start + arc.m_end) / 2.0f;
-
-            HSLColorType hsl;
-            hsl.h = angle * c_maxHue / 360;
-            hsl.s = highlight ? c_maxSat : (c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (c_maxSat / 25));
-            hsl.l = highlight ? c_maxLum*3/5 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 30));
-
-            const COLORREF rgb = FixLuminance(hsl.ToRGB());
+            const COLORREF rgb = color_from_angle_depth(angle, depth, highlight, file);
 
             D2D1_COLOR_F color;
             color.r = FLOAT(GetRValue(rgb)) / 255;
@@ -1036,35 +1193,6 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
             const FLOAT hue2 = 90.0f;
             COLORREF rgb;
 
-#if 0
-            const COLORREF rgb1 = apply_depth_to_hue(hue1, depth, highlight, !!file);
-
-            if (size_node >= size_max)
-            {
-                rgb = rgb1;
-            }
-            else
-            {
-                const COLORREF rgb2 = apply_depth_to_hue(hue2, depth, highlight, !!file);
-
-                // const FLOAT log_max = sqrt(FLOAT(size_max));
-                // const FLOAT log_node = log_max - sqrt(FLOAT(size_max - size_node));
-                // const FLOAT ratio = (log_max > 0) ? log_node / log_max : 0.0f;
-                const FLOAT ratio = size_node / size_max;
-
-                rgb = RGB(blend(GetRValue(rgb1), GetRValue(rgb2), ratio),
-                        blend(GetGValue(rgb1), GetGValue(rgb2), ratio),
-                        blend(GetBValue(rgb1), GetBValue(rgb2), ratio));
-
-                if (highlight)
-                {
-                    HSLColorType hsl(rgb);
-                    hsl.s = highlight ? c_maxSat : (c_maxSat * (file ? 0.7f : 0.95f)) - (FLOAT(depth) * (c_maxSat / 25));
-                    hsl.l = highlight ? c_maxLum*3/5 : (c_maxLum * (file ? 0.6f : 0.4f)) + (FLOAT(depth) * (c_maxLum / 30));
-                    rgb = hsl.ToRGB();
-                }
-            }
-#else
             {
                 // const FLOAT log_max = sqrt(FLOAT(size_max));
                 // const FLOAT log_node = log_max - sqrt(FLOAT(size_max - size_node));
@@ -1074,11 +1202,8 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
                 const FLOAT range = hue2 - hue1;
                 const FLOAT hue = range - ratio * range;
 
-                rgb = apply_depth_to_hue(hue, depth, highlight, !!file);
+                rgb = color_from_angle_depth(hue, depth, highlight, !!file);
             }
-#endif
-
-            rgb = FixLuminance(rgb);
 
             D2D1_COLOR_F color;
             color.r = FLOAT(GetRValue(rgb)) / 255;
