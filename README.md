@@ -51,3 +51,13 @@ proprietary or use a "viral" version of GPL license.
 So, I wrote my own.
 
 It is written in C++ and uses DirectX for rendering.
+
+## Building Elucidisk
+
+Elucidisk uses [Premake](http://premake.github.io) to generate Visual Studio solutions. Note that Premake >= 5.0-alpha12 is required.
+
+1. Cd to your clone of elucidisk.
+2. Run <code>premake5.exe <em>toolchain</em></code> (where <em>toolchain</em> is one of Premake's actions - see `premake5.exe --help`).
+3. Build scripts will be generated in <code>.build\\<em>toolchain</em></code>. For example `.build\vs2019\elucidisk.sln`.
+4. Call your toolchain of choice (Visual Studio, msbuild.exe, etc).
+
