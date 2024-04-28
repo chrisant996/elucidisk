@@ -7,7 +7,7 @@ end
 
 --------------------------------------------------------------------------------
 local function init_configuration(cfg)
-    configuration(cfg)
+    filter {cfg}
         defines("BUILD_"..cfg:upper())
         targetdir(to.."/bin/%{cfg.buildcfg}/%{cfg.platform}")
         objdir(to.."/obj/")
@@ -37,22 +37,22 @@ workspace("elucidisk")
     init_configuration("release")
     init_configuration("debug")
 
-    configuration("debug")
+    filter "debug"
         rtti("on")
         optimize("off")
         defines("DEBUG")
         defines("_DEBUG")
 
-    configuration("release")
+    filter "release"
         rtti("off")
         optimize("full")
         omitframepointer("on")
         defines("NDEBUG")
 
-    configuration({"release", "vs*"})
+    filter {"release", "action:vs*"}
         flags("LinkTimeOptimization")
 
-    configuration("vs*")
+    filter "action:vs*"
         defines("_HAS_EXCEPTIONS=0")
 
 --------------------------------------------------------------------------------
@@ -66,12 +66,12 @@ project("elucidisk")
     language("c++")
     flags("fatalwarnings")
 
-    includedirs(".build/vs2019/bin") -- for the generated manifest.xml
+    includedirs(".build/vs2022/bin") -- for the generated manifest.xml
     files("*.cpp")
     files("textonpath/*.cpp")
     files("main.rc")
 
-    configuration("vs*")
+    filter "action:vs*"
         defines("_CRT_SECURE_NO_WARNINGS")
         defines("_CRT_NONSTDC_NO_WARNINGS")
 
@@ -79,6 +79,11 @@ project("elucidisk")
 
 --------------------------------------------------------------------------------
 local any_warnings_or_failures = nil
+local msbuild_locations = {
+    "c:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\MSBuild\\Current\\Bin",
+    "c:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\MSBuild\\Current\\Bin",
+    "c:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\MSBuild\\Current\\Bin",
+}
 
 --------------------------------------------------------------------------------
 local release_manifest = {
@@ -210,8 +215,18 @@ end
 
 --------------------------------------------------------------------------------
 local function have_required_tool(name, fallback)
-    if exec("where " .. name, true) then
-        return name
+    local vsver
+    if name == "msbuild" then
+        local opt_vsver = _OPTIONS["vsver"]
+        if opt_vsver and opt_vsver:find("^vs") then
+            vsver = opt_vsver:sub(3)
+        end
+    end
+
+    if not vsver then
+        if exec("where " .. name, true) then
+            return name
+        end
     end
 
     if fallback then
@@ -222,9 +237,11 @@ local function have_required_tool(name, fallback)
             t = { fallback }
         end
         for _,dir in ipairs(t) do
-            local file = dir .. "\\" .. name .. ".exe"
-            if file_exists(file) then
-                return '"' .. file .. '"'
+            if not vsver or dir:find(vsver) then
+                local file = dir.."\\"..name..".exe"
+                if file_exists(file) then
+                    return '"'..file..'"'
+                end
             end
         end
     end
@@ -262,7 +279,7 @@ newaction {
         local root_dir = path.getabsolute(".build/release") .. "/"
 
         -- Check we have the tools we need.
-        local have_msbuild = have_required_tool("msbuild", { "c:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\MSBuild\\Current\\Bin", "c:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\MSBuild\\Current\\Bin" })
+        local have_msbuild = have_required_tool("msbuild", msbuild_locations)
         local have_7z = have_required_tool("7z", { "c:\\Program Files\\7-Zip", "c:\\Program Files (x86)\\7-Zip" })
         local have_signtool = have_required_tool("signtool", { "c:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.22000.0\\x64" })
 
@@ -284,7 +301,7 @@ newaction {
             if have_msbuild then
                 target = target or "build"
 
-                toolchain = _OPTIONS["vsver"] or "vs2019"
+                toolchain = _OPTIONS["vsver"] or "vs2022"
                 exec(premake .. " " .. toolchain)
                 os.chdir(".build/" .. toolchain)
 
@@ -382,7 +399,7 @@ newaction {
     trigger = "manifest",
     description = "Elucidisk: generate app manifest",
     execute = function ()
-        toolchain = _OPTIONS["vsver"] or "vs2019"
+        toolchain = _OPTIONS["vsver"] or "vs2022"
         local outdir = path.getabsolute(".build/" .. toolchain .. "/bin").."/"
 
         local version = parse_version_file()
