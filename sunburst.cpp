@@ -422,6 +422,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
     if (!m_spDWriteFactory && !GetDWriteFactory(&m_spDWriteFactory))
         return E_UNEXPECTED;
 
+    const DpiScaler dpiWithTextScaling(dpi, true);
     const FLOAT dpiF = dpi.ScaleF(96);
 
     ERRRET(m_spFactory->CreateHwndRenderTarget(
@@ -466,7 +467,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
             rendering_mode,
             &m_spRenderingParams));
 
-    m_fontSize = FLOAT(-dpi.PointSizeToHeight(c_fontsize));
+    m_fontSize = FLOAT(-dpiWithTextScaling.PointSizeToHeight(c_fontsize));
     ERRRET(m_spDWriteFactory->CreateTextFormat(
             c_fontface,
             nullptr,
@@ -478,7 +479,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
             &m_spTextFormat));
     m_spTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
 
-    m_headerFontSize = FLOAT(-dpi.PointSizeToHeight(c_headerfontsize));
+    m_headerFontSize = FLOAT(-dpiWithTextScaling.PointSizeToHeight(c_headerfontsize));
     ERRRET(m_spDWriteFactory->CreateTextFormat(
             c_fontface,
             nullptr,
@@ -490,7 +491,21 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
             &m_spHeaderTextFormat));
     m_spHeaderTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
 
-    m_arcFontSize = FLOAT(-dpi.PointSizeToHeight(c_arcfontsize));
+    // Intentionally unscaled:  it's not important text, and if it's scaled it
+    // can run over the sunburst chart.
+    m_appInfoFontSize = FLOAT(-dpi.PointSizeToHeight(c_fontsize));
+    ERRRET(m_spDWriteFactory->CreateTextFormat(
+            c_fontface,
+            nullptr,
+            DWRITE_FONT_WEIGHT_REGULAR,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            m_appInfoFontSize,
+            TEXT("en-US"),
+            &m_spAppInfoTextFormat));
+    m_spAppInfoTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+
+    m_arcFontSize = FLOAT(-dpiWithTextScaling.PointSizeToHeight(c_arcfontsize));
     ERRRET(m_spDWriteFactory->CreateTextFormat(
             c_fontface,
             nullptr,
@@ -1543,7 +1558,7 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
 
     // Rings.
 
-    m_min_arc_text_len = FLOAT(m_dpi.Scale(20));
+    m_min_arc_text_len = FLOAT(m_dpiWithTextScaling.Scale(20));
 
     size_t depth;
     FLOAT inner_radius = mx.center_radius;
@@ -1553,7 +1568,7 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
         if (thickness <= 0.0f)
             break;
 
-        if (thickness < target.ArcFontSize() + m_dpi.Scale(4))
+        if (thickness < target.ArcFontSize() + m_dpiWithTextScaling.Scale(4))
             show_names = false;
 
         const FLOAT outer_radius = inner_radius + thickness;
@@ -1693,6 +1708,7 @@ bool Sunburst::OnDpiChanged(const DpiScaler& dpi)
     const bool changed = !m_dpi.IsDpiEqual(dpi);
 
     m_dpi.OnDpiChanged(dpi);
+    m_dpiWithTextScaling.OnDpiChanged(dpi, true);
 
     m_rings.clear();
     m_start_angles.clear();

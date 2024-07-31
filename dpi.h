@@ -52,6 +52,7 @@ public:
     explicit    DpiScaler(WORD dpi);
     explicit    DpiScaler(WPARAM wParam);
     explicit    DpiScaler(const DpiScaler& dpi);
+    explicit    DpiScaler(const DpiScaler& dpi, bool fTextScaling);
     explicit    DpiScaler(DpiScaler&& dpi);
 
     bool        IsDpiEqual(UINT dpi) const;
@@ -63,6 +64,7 @@ public:
     DpiScaler&  operator=(const DpiScaler& dpi);
     DpiScaler&  operator=(DpiScaler&& dpi);
     void        OnDpiChanged(const DpiScaler& dpi);
+    void        OnDpiChanged(const DpiScaler& dpi, bool fTextScaling);
 
     int         Scale(int n) const;
     float       ScaleF(float n) const;
@@ -81,7 +83,15 @@ public:
     WPARAM      MakeWParam() const;
 
 private:
+#ifdef DEBUG
+    bool        IsTextScaling() const { return m_fTextScaling; }
+#endif
+
+private:
     WORD        m_logPixels;
+#ifdef DEBUG
+    bool        m_fTextScaling;
+#endif
 };
 
 /*
@@ -166,3 +176,14 @@ bool HIDPI_StretchIcon(const DpiScaler& dpi, HICON* phic, int cxIcon, int cyIcon
  */
 HIMAGELIST HIDPI_ImageList_LoadImage(HINSTANCE hinst, int cxTarget, int cyTarget, UINT idb, int cxNative, int cGrow, COLORREF crMask, UINT uType, UINT uFlags);
 
+/*
+ * HIDPI_OnWmSettingChange
+ *
+ *      Call this on WM_SETTINGCHANGE in top level windows to check whether
+ *      the Text Scale Factor has changed.
+ *
+ * Rets:
+ *
+ *      Returns true if the Text Scale Factor has changed, otherwise false.
+ */
+bool HIDPI_OnWmSettingChange();

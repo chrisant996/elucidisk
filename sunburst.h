@@ -77,8 +77,10 @@ class DirectHwndRenderTarget
 
         SPI<IDWriteTextFormat>      m_spTextFormat;
         SPI<IDWriteTextFormat>      m_spHeaderTextFormat;
+        SPI<IDWriteTextFormat>      m_spAppInfoTextFormat;
         FLOAT                       m_fontSize = 0.0f;
         FLOAT                       m_headerFontSize = 0.0f;
+        FLOAT                       m_appInfoFontSize = 0.0f;
 
         SPI<IDWriteTextFormat>      m_spArcTextFormat;
         SPI<IDWriteRenderingParams> m_spRenderingParams;
@@ -113,6 +115,8 @@ public:
     FLOAT                   FontSize() const { return m_resources->m_fontSize; }
     IDWriteTextFormat*      HeaderTextFormat() const { return m_resources->m_spHeaderTextFormat; }
     FLOAT                   HeaderFontSize() const { return m_resources->m_headerFontSize; }
+    IDWriteTextFormat*      AppInfoTextFormat() const { return m_resources->m_spAppInfoTextFormat; }
+    FLOAT                   AppInfoFontSize() const { return m_resources->m_appInfoFontSize; }
 
     ID2D1DeviceContext*     Context() const { return m_resources->m_spContext; }
     IDWriteTextFormat*      ArcTextFormat() const { return m_resources->m_spArcTextFormat; }
@@ -200,6 +204,7 @@ protected:
 
 private:
     DpiScaler               m_dpi;
+    DpiScaler               m_dpiWithTextScaling;
     FLOAT                   m_min_arc_text_len = 0;
     FLOAT                   m_max_extent = 0;
     D2D1_RECT_F             m_bounds = D2D1::RectF();

@@ -350,15 +350,57 @@ int HIDPIMulDiv(int x, int y, int z)
     return (((HIDPIABS(x) * y) + (z >> 3)) / z) * HIDPISIGN(x);
 }
 
+static float s_textScaleFactor = 0.0;
+
+static float GetTextScaleFactor()
+{
+    if (s_textScaleFactor == 0.0)
+    {
+        s_textScaleFactor = 1.0;
+
+        // I can't find any API that exposes the Text Scale Factor.
+        // It's stored in the registry as the factor times 100 here:
+        // Software\\Microsoft\\Accessibility\\TextScaleFactor
+        SHKEY shkey;
+        if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\Microsoft\\Accessibility", 0, KEY_READ, &shkey) == ERROR_SUCCESS)
+        {
+            DWORD dwType;
+            DWORD dwValue;
+            DWORD dwSize = sizeof(dwValue);
+            if (RegQueryValueEx(shkey, L"TextScaleFactor", 0, &dwType, LPBYTE(&dwValue), &dwSize) == ERROR_SUCCESS &&
+                REG_DWORD == dwType &&
+                sizeof(dwValue) == dwSize)
+            {
+                s_textScaleFactor = float(dwValue) / 100;
+            }
+        }
+    }
+
+    return s_textScaleFactor;
+}
+
+bool HIDPI_OnWmSettingChange()
+{
+    const float oldTextScaleFactor = s_textScaleFactor;
+    s_textScaleFactor = 0.0;
+    return (GetTextScaleFactor() != oldTextScaleFactor);
+}
+
 DpiScaler::DpiScaler()
 {
     m_logPixels = 96;
+#ifdef DEBUG
+    m_fTextScaling = false;
+#endif
 }
 
 DpiScaler::DpiScaler(WORD dpi)
 {
     assert(dpi);
     m_logPixels = dpi;
+#ifdef DEBUG
+    m_fTextScaling = false;
+#endif
 }
 
 DpiScaler::DpiScaler(WPARAM wParam)
@@ -366,16 +408,36 @@ DpiScaler::DpiScaler(WPARAM wParam)
     assert(wParam);
     assert(LOWORD(wParam));
     m_logPixels = LOWORD(wParam);
+#ifdef DEBUG
+    m_fTextScaling = false;
+#endif
 }
 
 DpiScaler::DpiScaler(const DpiScaler& dpi)
 {
+    assert(!dpi.IsTextScaling());
     m_logPixels = dpi.m_logPixels;
+#ifdef DEBUG
+    m_fTextScaling = dpi.m_fTextScaling;
+#endif
+}
+
+DpiScaler::DpiScaler(const DpiScaler& dpi, bool fTextScaling)
+{
+    assert(!dpi.IsTextScaling());
+    m_logPixels = fTextScaling ? WORD(GetTextScaleFactor() * dpi.m_logPixels) : dpi.m_logPixels;
+#ifdef DEBUG
+    m_fTextScaling = dpi.m_fTextScaling;
+#endif
 }
 
 DpiScaler::DpiScaler(DpiScaler&& dpi)
 {
+    assert(!dpi.IsTextScaling());
     m_logPixels = dpi.m_logPixels;
+#ifdef DEBUG
+    m_fTextScaling = dpi.m_fTextScaling;
+#endif
 }
 
 bool DpiScaler::IsDpiEqual(UINT dpi) const
@@ -393,24 +455,44 @@ DpiScaler& DpiScaler::operator=(WORD dpi)
 {
     assert(dpi);
     m_logPixels = dpi;
+#ifdef DEBUG
+    m_fTextScaling = false;
+#endif
     return *this;
 }
 
 DpiScaler& DpiScaler::operator=(const DpiScaler& dpi)
 {
     m_logPixels = dpi.m_logPixels;
+#ifdef DEBUG
+    m_fTextScaling = dpi.m_fTextScaling;
+#endif
     return *this;
 }
 
 DpiScaler& DpiScaler::operator=(DpiScaler&& dpi)
 {
     m_logPixels = dpi.m_logPixels;
+#ifdef DEBUG
+    m_fTextScaling = dpi.m_fTextScaling;
+#endif
     return *this;
 }
 
 void DpiScaler::OnDpiChanged(const DpiScaler& dpi)
 {
     m_logPixels = dpi.m_logPixels;
+#ifdef DEBUG
+    m_fTextScaling = dpi.m_fTextScaling;
+#endif
+}
+
+void DpiScaler::OnDpiChanged(const DpiScaler& dpi, bool fTextScaling)
+{
+    m_logPixels = fTextScaling ? WORD(GetTextScaleFactor() * dpi.m_logPixels) : dpi.m_logPixels;
+#ifdef DEBUG
+    m_fTextScaling = fTextScaling;
+#endif
 }
 
 int DpiScaler::Scale(int n) const

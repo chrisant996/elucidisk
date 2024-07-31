@@ -745,6 +745,7 @@ private:
     int                     m_pressed = -1;
     int                     m_suppress_desc = -1;
     DpiScaler               m_dpi;
+    DpiScaler               m_dpiWithTextScaling;
 };
 
 void Buttons::Attach(HWND hwnd)
@@ -757,6 +758,7 @@ void Buttons::Attach(HWND hwnd)
 void Buttons::OnDpiChanged(const DpiScaler& dpi)
 {
     m_dpi.OnDpiChanged(dpi);
+    m_dpiWithTextScaling.OnDpiChanged(dpi, true);
 }
 
 void Buttons::AddButton(const UINT id, const RECT& rect, const WCHAR* caption, const WCHAR* desc, MakeButtonIconFn* make_icon)
@@ -1001,9 +1003,12 @@ private:
     HWND                    m_hwnd = 0;
     const HINSTANCE         m_hinst;
     HFONT                   m_hfont = 0;
+    HFONT                   m_hfontAppInfo = 0;
     DpiScaler               m_dpi;
+    DpiScaler               m_dpiWithTextScaling;
     LONG                    m_top_reserve = 0;
     LONG                    m_margin_reserve = 0;
+    LONG                    m_appinfo_height = 0;
     RECT                    m_web_link_rect = {};
     SizeTracker             m_sizeTracker;
     LONG                    m_cxNumberArea = 0;
@@ -1523,7 +1528,7 @@ void MainWindow::DrawAppInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect)
     text = TEXT("Elucidisk github repo");
     auto oldColor = t.TextBrush()->GetColor();
     t.TextBrush()->SetColor(D2D1::ColorF(0x3333ff));
-    t.WriteText(t.TextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS|WTO_UNDERLINE);
+    t.WriteText(t.AppInfoTextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS|WTO_UNDERLINE);
     m_web_link_rect.left = LONG(t.LastTextPosition().x);
     m_web_link_rect.top = LONG(t.LastTextPosition().y);
     m_web_link_rect.right = LONG(rect.right);
@@ -1532,17 +1537,17 @@ void MainWindow::DrawAppInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect)
     rect.bottom -= t.LastTextSize().height;
 
     text = TEXT("by Christopher Antos");
-    t.WriteText(t.TextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
+    t.WriteText(t.AppInfoTextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
     rect.bottom -= t.LastTextSize().height;
 
     text = TEXT(COPYRIGHT_STR);
     const WCHAR* end = wcschr(wcschr(wcschr(text.c_str(), ' ') + 1, ' ') + 1, ' ');
     text.resize(end - text.c_str());
-    t.WriteText(t.TextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
+    t.WriteText(t.AppInfoTextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
     rect.bottom -= t.LastTextSize().height;
 
     swprintf_s(sz, _countof(sz), TEXT("Version %u.%u"), VERSION_MAJOR, VERSION_MINOR);
-    t.WriteText(t.TextFormat(), 0.0f, 0.0f, rect, sz, wcslen(sz), WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
+    t.WriteText(t.AppInfoTextFormat(), 0.0f, 0.0f, rect, sz, wcslen(sz), WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
     rect.bottom -= t.LastTextSize().height;
 }
 
@@ -1610,7 +1615,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 const D2D1_SIZE_U rtSize = pTarget->GetPixelSize();
                 const D2D1_RECT_F rectClient = D2D1::RectF(FLOAT(rcClient.left), FLOAT(rcClient.top), FLOAT(rcClient.right), FLOAT(rcClient.bottom));
 
-                const FLOAT width = FLOAT(rtSize.width) - (m_margin_reserve + m_dpi.Scale(32) + m_margin_reserve) * 2;
+                const FLOAT width = FLOAT(rtSize.width) - (m_margin_reserve + m_dpiWithTextScaling.Scale(32) + m_margin_reserve) * 2;
                 const FLOAT height = FLOAT(rtSize.height) - (m_margin_reserve + m_top_reserve);
 
                 const FLOAT extent = std::min<FLOAT>(width, height);
@@ -1969,6 +1974,14 @@ LShowTotal:
         }
         break;
 
+    case WM_SETTINGCHANGE:
+        if (HIDPI_OnWmSettingChange())
+        {
+            const DpiScaler dpi(m_dpi);
+            OnDpiChanged(dpi);
+        }
+        goto LDefault;
+
     case WM_CREATE:
         SendMessage(m_hwnd, WM_SETICON, true, LPARAM(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 0, 0, 0)));
         SendMessage(m_hwnd, WM_SETICON, false, LPARAM(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 16, 16, 0)));
@@ -2262,23 +2275,32 @@ LAskRescan:
 
 void MainWindow::OnDpiChanged(const DpiScaler& dpi)
 {
-    m_dpi = dpi;
+    m_dpi.OnDpiChanged(dpi);
+    m_dpiWithTextScaling.OnDpiChanged(dpi, true);
 
     if (m_hfont)
         DeleteFont(m_hfont);
+    if (m_hfontAppInfo)
+        DeleteFont(m_hfontAppInfo);
 
-    m_hfont = MakeFont(dpi, 10);
+    m_hfont = MakeFont(m_dpiWithTextScaling, 10);
+    m_hfontAppInfo = MakeFont(m_dpi, 10);
 
     {
         SIZE size;
         HDC hdc = GetDC(m_hwnd);
         SaveDC(hdc);
-        SelectFont(hdc, m_hfont);
+
+        TEXTMETRIC tmAppInfo;
+        SelectFont(hdc, m_hfontAppInfo);
+        GetTextMetrics(hdc, &tmAppInfo);
+        m_appinfo_height = tmAppInfo.tmHeight; // Space for full path.
 
         TEXTMETRIC tm;
+        SelectFont(hdc, m_hfont);
         GetTextMetrics(hdc, &tm);
         m_top_reserve = tm.tmHeight; // Space for full path.
-        m_margin_reserve = dpi.Scale(3);
+        m_margin_reserve = m_dpiWithTextScaling.Scale(3);
 
         LONG cxMax = 0;
         for (WCHAR ch = '0'; ch <= '9'; ++ch)
@@ -2298,12 +2320,16 @@ void MainWindow::OnDpiChanged(const DpiScaler& dpi)
 
     m_sunburst.OnDpiChanged(dpi);
     m_buttons.OnDpiChanged(dpi);
+
+    RECT rcClient;
+    GetClientRect(m_hwnd, &rcClient);
+    OnLayout(&rcClient);
 }
 
 void MainWindow::OnLayout(RECT* prc)
 {
     RECT rc;
-    const LONG dim = m_dpi.Scale(32);
+    const LONG dim = m_dpiWithTextScaling.Scale(32);
     const LONG margin = m_dpi.Scale(8);
 
     prc->top += m_top_reserve;
@@ -2324,7 +2350,7 @@ void MainWindow::OnLayout(RECT* prc)
     m_buttons.AddButton(IDM_UP, rc, nullptr, TEXT("Parent Folder"), MakeUpIcon);
 
     rc.right = prc->right - margin;
-    rc.bottom = prc->bottom - m_margin_reserve * 6 - m_top_reserve * 4;
+    rc.bottom = prc->bottom - m_appinfo_height * 6; // 4 text lines + 2 for padding.
     rc.left = rc.right - dim;
     rc.top = rc.bottom - dim;
     m_buttons.AddButton(IDM_APPWIZ, rc, nullptr, TEXT("Programs and Features"), MakeAppsIcon);
@@ -2361,6 +2387,11 @@ LRESULT MainWindow::OnDestroy()
     {
         DeleteFont(m_hfont);
         m_hfont = 0;
+    }
+    if (m_hfontAppInfo)
+    {
+        DeleteFont(m_hfontAppInfo);
+        m_hfontAppInfo = 0;
     }
     return 0;
 }
