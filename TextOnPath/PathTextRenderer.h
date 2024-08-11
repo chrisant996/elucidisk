@@ -26,7 +26,7 @@ public:
         );
 
 // BEGIN_CHANGE
-    STDMETHOD_(bool, TestFit)(
+    STDMETHOD(TestFit)(
         void* clientDrawingContext,
         IDWriteTextLayout* pLayout
         );

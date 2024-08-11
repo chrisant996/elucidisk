@@ -43,13 +43,17 @@ PathTextRenderer::PathTextRenderer(FLOAT pixelsPerDip) :
 }
 
 // BEGIN_CHANGE
-bool PathTextRenderer::TestFit(void* clientDrawingContext, IDWriteTextLayout* pLayout)
+HRESULT PathTextRenderer::TestFit(void* clientDrawingContext, IDWriteTextLayout* pLayout)
 {
     m_measure = true;
     m_fits = true;
-    pLayout->Draw(clientDrawingContext, this, 0, 0);
+    const HRESULT hr = pLayout->Draw(clientDrawingContext, this, 0, 0);
     m_measure = false;
-    return m_fits;
+    if (FAILED(hr))
+        return hr;
+    if (!m_fits)
+        return S_FALSE;
+    return S_OK;
 }
 // END_CHANGE
 

@@ -13,8 +13,6 @@
 #include "TextOnPath/PathTextRenderer.h"
 #include <string>
 
-#define USE_MIN_ARC_LENGTH              // Likely permanent.
-
 //#define USE_CHART_OUTLINE               // Experimenting with this off.
 
 #define MAX_SUNBURST_DEPTH 20
@@ -151,9 +149,7 @@ struct SunburstMetrics
     const FLOAT center_radius;
     const FLOAT max_radius;
     const FLOAT range_radius;
-#ifdef USE_MIN_ARC_LENGTH
     const FLOAT min_arc;
-#endif
 
 private:
     FLOAT thicknesses[MAX_SUNBURST_DEPTH];
@@ -190,17 +186,15 @@ public:
 protected:
     static D2D1_COLOR_F     MakeColor(const Arc& arc, size_t depth, bool highlight);
     static D2D1_COLOR_F     MakeRootColor(bool highlight, bool free);
-#ifdef USE_MIN_ARC_LENGTH
     static void             MakeArc(std::vector<Arc>& arcs, FLOAT outer_radius, FLOAT min_arc, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert=1.0f);
     std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring, FLOAT outer_radius, FLOAT min_arc);
-#else
-    static void             MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert=1.0f);
-    std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring);
-#endif
     void                    AddArcToSink(ID2D1GeometrySink* pSink, bool counter_clockwise, FLOAT start, FLOAT end, const D2D1_POINT_2F& end_point, FLOAT radius);
     bool                    MakeArcGeometry(DirectHwndRenderTarget& target, FLOAT start, FLOAT end, FLOAT inner_radius, FLOAT outer_radius, ID2D1Geometry** ppGeometry);
     void                    DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT radius);
+
+private:
     void                    RenderRingsInternal(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight, bool files, HighlightInfo& highlightInfo);
+    int                     DrawArcTextInternal(DirectHwndRenderTarget& target, IDWriteFactory* pFactory, const WCHAR* text, UINT32 length, FLOAT start, FLOAT end, FLOAT radius, bool only_test_fit=false);
 
 private:
     DpiScaler               m_dpi;

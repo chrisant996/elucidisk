@@ -36,15 +36,8 @@ constexpr WCHAR c_fontface[] = TEXT("Segoe UI");
 constexpr FLOAT c_fontsize = 10.0f;
 constexpr FLOAT c_headerfontsize = 12.0f;
 constexpr FLOAT c_arcfontsize = 8.0f;
-
-#ifdef USE_MIN_ARC_LENGTH
-# define _PASS_MIN_ARC_LENGTH   , outer_radius, min_arc
 constexpr FLOAT c_minArc = 2.5f;
-#else
-# define _PASS_MIN_ARC_LENGTH
-constexpr FLOAT c_minAngle = 1.1f;
-#endif
-
+constexpr UINT32 c_minArcTextLength = 1;
 
 constexpr WCHAR c_ellipsis[] = TEXT("...");
 constexpr size_t c_ellipsis_len = _countof(c_ellipsis) - 1;
@@ -781,9 +774,7 @@ SunburstMetrics::SunburstMetrics(const DpiScaler& dpi, const D2D1_RECT_F& bounds
 , center_radius(make_center_radius(dpi, boundary_radius, max_extent))
 , max_radius(boundary_radius - (margin + indicator_thickness + margin))
 , range_radius(max_radius - center_radius)
-#ifdef USE_MIN_ARC_LENGTH
 , min_arc(dpi.ScaleF(c_minArc))
-#endif
 {
     if (g_show_proportional_area)
     {
@@ -843,11 +834,7 @@ bool Sunburst::SetBounds(const D2D1_RECT_F& rect, const FLOAT max_extent)
     return changed;
 }
 
-#ifdef USE_MIN_ARC_LENGTH
 void Sunburst::MakeArc(std::vector<Arc>& arcs, FLOAT outer_radius, const FLOAT min_arc, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert)
-#else
-void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert)
-#endif
 {
     const bool zero = (total == 0.0f);
     Arc arc;
@@ -861,11 +848,7 @@ void Sunburst::MakeArc(std::vector<Arc>& arcs, const std::shared_ptr<Node>& node
     assert(arc.m_end - arc.m_start <= span);
 #endif
 
-#ifdef USE_MIN_ARC_LENGTH
     if (ArcLength(arc.m_end - arc.m_start, outer_radius) >= min_arc)
-#else
-    if (arc.m_end - arc.m_start >= c_minAngle)
-#endif
     {
         arc.m_node = node;
         arcs.emplace_back(std::move(arc));
@@ -957,10 +940,8 @@ void Sunburst::BuildRings(const SunburstMetrics& mx, const std::vector<std::shar
 
     std::vector<Arc>& arcs = m_rings.back();
 
-#ifdef USE_MIN_ARC_LENGTH
     FLOAT outer_radius = mx.center_radius + mx.get_thickness(0);
     const FLOAT min_arc = mx.min_arc;
-#endif
 
     for (size_t ii = 0; ii < roots.size(); ++ii)
     {
@@ -977,9 +958,9 @@ void Sunburst::BuildRings(const SunburstMetrics& mx, const std::vector<std::shar
 
         double sweep = 0;
         for (const auto dir : dirs)
-            MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, consumed, start, span, convert);
+            MakeArc(arcs, outer_radius, min_arc, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, consumed, start, span, convert);
         for (const auto file : files)
-            MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, consumed, start, span, convert);
+            MakeArc(arcs, outer_radius, min_arc, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, consumed, start, span, convert);
 #ifdef USE_FREESPACE_RING
         if (free)
         {
@@ -996,11 +977,9 @@ void Sunburst::BuildRings(const SunburstMetrics& mx, const std::vector<std::shar
 
     while (m_rings.size() <= c_max_depth)
     {
-#ifdef USE_MIN_ARC_LENGTH
         outer_radius += mx.get_thickness(m_rings.size() + 1);
-#endif
 
-        std::vector<Arc> arcs = NextRing(m_rings.back() _PASS_MIN_ARC_LENGTH);
+        std::vector<Arc> arcs = NextRing(m_rings.back(), outer_radius, min_arc);
         if (arcs.empty())
             break;
         m_rings.emplace_back(std::move(arcs));
@@ -1019,11 +998,7 @@ void Sunburst::BuildRings(const SunburstMetrics& mx, const std::vector<std::shar
 #endif
 }
 
-#ifdef USE_MIN_ARC_LENGTH
 std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_ring, const FLOAT outer_radius, const FLOAT min_arc)
-#else
-std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_ring)
-#endif
 {
     std::vector<Arc> arcs;
 
@@ -1046,9 +1021,9 @@ std::vector<Sunburst::Arc> Sunburst::NextRing(const std::vector<Arc>& parent_rin
 
             const double range = double(parent->GetSize());
             for (const auto dir : dirs)
-                MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, range, start, span);
+                MakeArc(arcs, outer_radius, min_arc, std::static_pointer_cast<Node>(dir), dir->GetSize(), sweep, range, start, span);
             for (const auto file : files)
-                MakeArc(arcs _PASS_MIN_ARC_LENGTH, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, range, start, span);
+                MakeArc(arcs, outer_radius, min_arc, std::static_pointer_cast<Node>(file), file->GetSize(), sweep, range, start, span);
 
 #ifdef DEBUG
             if (arcs.size() > index)
@@ -1349,6 +1324,48 @@ inline bool is_highlight(const std::shared_ptr<Node>& highlight, const std::shar
     return highlight && highlight == node && is_root_finished(node);
 }
 
+// 1 = success, 0 = failure, -1 = can be shortened.
+int Sunburst::DrawArcTextInternal(DirectHwndRenderTarget& target, IDWriteFactory* pFactory, const WCHAR* text, UINT32 length, FLOAT start, FLOAT end, FLOAT radius, bool only_test_fit)
+{
+    SPI<IDWriteTextLayout> spTextLayout;
+    if (FAILED(pFactory->CreateTextLayout(text, length, target.ArcTextFormat(), m_bounds.right - m_bounds.left, m_bounds.bottom - m_bounds.top, &spTextLayout)))
+        return 0;
+
+    D2D1_POINT_2F outer_start_point = MakePoint(m_center, radius, start);
+    D2D1_POINT_2F outer_end_point = MakePoint(m_center, radius, end);
+
+    SPI<ID2D1PathGeometry> spGeometry;
+    if (FAILED(target.Factory()->CreatePathGeometry(&spGeometry)))
+        return 0;
+
+    SPI<ID2D1GeometrySink> spSink;
+    if (FAILED(spGeometry->Open(&spSink)))
+        return 0;
+
+    spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
+    spSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_HOLLOW);
+
+    AddArcToSink(spSink, false, start, end, outer_end_point, radius);
+
+    spSink->EndFigure(D2D1_FIGURE_END_OPEN);
+    spSink->Close();
+
+    PathTextDrawingContext context;
+    context.brush.Set(target.LineBrush());
+    context.geometry.Set(spGeometry);
+    context.d2DContext.Set(target.Context());
+
+    const HRESULT hr = target.ArcTextRenderer()->TestFit(&context, spTextLayout);
+    if (FAILED(hr))
+        return 0;
+    if (hr == S_FALSE)
+        return -1;
+
+    if (!only_test_fit)
+        spTextLayout->Draw(&context, target.ArcTextRenderer(), 0, 0);
+    return 1;
+}
+
 void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT radius)
 {
     if (ArcLength(arc.m_end - arc.m_start, radius) < m_min_arc_text_len)
@@ -1360,41 +1377,57 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
 
     std::wstring text;
     text.append(TEXT(" "));
+#ifdef SHOW_ARC_LENGTH
+    WCHAR xx[1024];
+    swprintf_s(xx, L"%u", UINT32(ArcLength(arc.m_end - arc.m_start, radius)));
+    text.append(xx);
+#else
     text.append(arc.m_node->GetName());
+#endif
     text.append(TEXT(" "));
-
-    SPI<IDWriteTextLayout> spTextLayout;
-    if (FAILED(pFactory->CreateTextLayout(text.c_str(), UINT32(text.length()), target.ArcTextFormat(), m_bounds.right - m_bounds.left, m_bounds.bottom - m_bounds.top, &spTextLayout)))
-        return;
 
     const FLOAT start = arc.m_start + c_rotation;
     const FLOAT end = arc.m_end + c_rotation;
 
-    D2D1_POINT_2F outer_start_point = MakePoint(m_center, radius, start);
-    D2D1_POINT_2F outer_end_point = MakePoint(m_center, radius, end);
-
-    SPI<ID2D1PathGeometry> spGeometry;
-    if (SUCCEEDED(target.Factory()->CreatePathGeometry(&spGeometry)))
+    UINT32 length = UINT32(text.length());
+    if (DrawArcTextInternal(target, pFactory, text.c_str(), length, start, end, radius) < 0)
     {
-        SPI<ID2D1GeometrySink> spSink;
-        if (SUCCEEDED(spGeometry->Open(&spSink)))
+        std::wstring truncated;
+        UINT32 lo = c_minArcTextLength;
+        UINT32 hi = length - 2 - 2; // -2 for the padding spaces, -2 to ensure truncation doesn't just replace a character with an ellipsis.
+        UINT32 fits = 0;
+        while (lo <= hi)
         {
-            spSink->SetFillMode(D2D1_FILL_MODE_WINDING);
-            spSink->BeginFigure(outer_start_point, D2D1_FIGURE_BEGIN_HOLLOW);
-
-            AddArcToSink(spSink, false, start, end, outer_end_point, radius);
-
-            spSink->EndFigure(D2D1_FIGURE_END_OPEN);
-            spSink->Close();
+            UINT32 mid = (lo + hi) / 2;
+            truncated.clear();
+            truncated.append(text.c_str(), mid + 1); // +1 for leading space.
+            truncated.append(c_ellipsis, c_ellipsis_len);
+            truncated.append(TEXT(" "));
+            const int result = DrawArcTextInternal(target, pFactory, truncated.c_str(), UINT32(truncated.length()), start, end, radius, true/*only_test_fit*/);
+            if (result == 0)
+                return;
+            else if (result < 0)
+                hi = mid - 1;
+            else
+            {
+                lo = mid + 1;
+                if (fits < mid)
+                    fits = mid;
+            }
         }
 
-        PathTextDrawingContext context;
-        context.brush.Set(target.LineBrush());
-        context.geometry.Set(spGeometry);
-        context.d2DContext.Set(target.Context());
-
-        if (target.ArcTextRenderer()->TestFit(&context, spTextLayout))
-            spTextLayout->Draw(&context, target.ArcTextRenderer(), 0, 0);
+        if (fits >= c_minArcTextLength && fits < text.length())
+        {
+            ++fits; // Including the leading space.
+            fits -= IS_HIGH_SURROGATE(text[fits - 1]);
+            if (fits <= 1) // Must end up with more than just the leading space.
+                return;
+            truncated.clear();
+            truncated.append(text.c_str(), fits);
+            truncated.append(c_ellipsis, c_ellipsis_len);
+            truncated.append(TEXT(" "));
+            DrawArcTextInternal(target, pFactory, truncated.c_str(), UINT32(truncated.length()), start, end, radius);
+        }
     }
 }
 
