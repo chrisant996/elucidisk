@@ -2033,6 +2033,7 @@ LShowTotal:
             m_buttons.UseDarkMode(m_dark_mode);
             m_sunburst.UseDarkMode(m_dark_mode);
             m_directRender.ReleaseDeviceResources();
+            InvalidateRect(m_hwnd, nullptr, true);
             UpdateWindow(m_hwnd);
         }
         goto LDefault;
