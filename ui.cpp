@@ -1077,6 +1077,7 @@ HWND MainWindow::Create()
         wc.style = CS_HREDRAW|CS_VREDRAW|CS_DBLCLKS;
         wc.lpfnWndProc = StaticWndProc;
         wc.hInstance = m_hinst;
+        wc.hIcon = HICON(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 0, 0, 0));
         wc.hCursor = LoadCursor(0, IDC_ARROW);
         wc.hbrBackground = HBRUSH(COLOR_WINDOW + 1 );
         wc.lpszClassName = c_class;
@@ -1620,7 +1621,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             m_buttons.ShowButton(IDM_UP, m_roots.size() == 1 && (m_roots[0]->GetParent() || m_original_roots.size() > 1));
             m_buttons.ShowButton(IDM_BACK, m_back_current > 0);
 
-            if (SUCCEEDED(m_directRender.CreateDeviceResources(m_hwnd, m_dpi, m_dark_mode)))
+            if (!IsIconic(m_hwnd) && SUCCEEDED(m_directRender.CreateDeviceResources(m_hwnd, m_dpi, m_dark_mode)))
             {
                 ID2D1RenderTarget* const pTarget = m_directRender.Target();
                 pTarget->AddRef();
