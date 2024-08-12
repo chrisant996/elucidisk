@@ -24,7 +24,9 @@ extern bool g_show_comparison_bar;
 extern bool g_show_proportional_area;
 extern bool g_show_dontscan_anyway;
 extern long g_color_mode;
+extern long g_syscolor_mode;
 enum ColorMode { CM_PLAIN, CM_RAINBOW, CM_HEATMAP };
+enum SysColorMode { SCM_AUTO, SCM_LIGHT, SCM_DARK };
 #ifdef DEBUG
 extern long g_fake_data;
 enum FakeDataMode { FDM_REAL, FDM_SIMULATED, FDM_COLORWHEEL, FDM_EMPTYDRIVE, FDM_ONLYDIRS };

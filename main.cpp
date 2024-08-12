@@ -19,6 +19,7 @@ bool g_show_comparison_bar = true;
 bool g_show_proportional_area = true;
 bool g_show_dontscan_anyway = false;
 long g_color_mode = CM_RAINBOW;
+long g_syscolor_mode = SCM_AUTO;
 #ifdef DEBUG
 long g_fake_data = FDM_REAL;
 #endif
@@ -64,6 +65,7 @@ int PASCAL WinMain(
     g_show_proportional_area = !!ReadRegLong(TEXT("ShowProportionalArea"), true);
     g_show_dontscan_anyway = !!ReadRegLong(TEXT("ShowDontScanAnyway"), false);
     g_color_mode = ReadRegLong(TEXT("ColorMode"), CM_RAINBOW);
+    g_syscolor_mode = ReadRegLong(TEXT("SysColorMode"), SCM_AUTO);
 #ifdef DEBUG
     g_fake_data = ReadRegLong(TEXT("DbgFakeData"), FDM_REAL);
 #endif

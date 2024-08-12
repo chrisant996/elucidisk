@@ -2025,20 +2025,21 @@ LShowTotal:
         goto LDefault;
 
      case WM_THEMECHANGED:
-        m_dark_mode = DarkModeOnThemeChanged(m_hwnd);
-        m_buttons.UseDarkMode(m_dark_mode);
-        m_sunburst.UseDarkMode(m_dark_mode);
-        m_directRender.ReleaseDeviceResources();
-        UpdateWindow(m_hwnd);
+        {
+            const DarkModeMode dmm = ((g_syscolor_mode == SCM_LIGHT) ? DarkModeMode::Light :
+                                      (g_syscolor_mode == SCM_DARK) ? DarkModeMode::Dark :
+                                      DarkModeMode::Auto);
+            m_dark_mode = DarkModeOnThemeChanged(m_hwnd, dmm);
+            m_buttons.UseDarkMode(m_dark_mode);
+            m_sunburst.UseDarkMode(m_dark_mode);
+            m_directRender.ReleaseDeviceResources();
+            UpdateWindow(m_hwnd);
+        }
         goto LDefault;
 
     case WM_CREATE:
         if (IsDarkModeSupported())
-        {
-// TODO: Why does the first one opt out of dark mode?
-            PostMessage(m_hwnd, WM_THEMECHANGED, 0, 0);
-            PostMessage(m_hwnd, WM_THEMECHANGED, 0, 0);
-        }
+            SendMessage(m_hwnd, WM_THEMECHANGED, 0, 0);
         goto LDefault;
 
     default:
@@ -2165,6 +2166,7 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
     if (g_show_dontscan_anyway)
         CheckMenuItem(hmenuSub, IDM_OPTION_SCANDONTSCAN, MF_BYCOMMAND|MF_CHECKED);
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
+    CheckMenuRadioItem(hmenuSub, IDM_OPTION_AUTOCOLOR, IDM_OPTION_DARKMODE, IDM_OPTION_AUTOCOLOR + g_syscolor_mode, MF_BYCOMMAND|MF_CHECKED);
 #ifdef DEBUG
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
     if (GetUseOklab())
@@ -2297,6 +2299,20 @@ LAskRescan:
                 g_color_mode = color_mode;
                 WriteRegLong(TEXT("ColorMode"), g_color_mode);
                 InvalidateRect(m_hwnd, nullptr, false);
+            }
+        }
+        break;
+
+    case IDM_OPTION_LIGHTMODE:
+    case IDM_OPTION_DARKMODE:
+    case IDM_OPTION_AUTOCOLOR:
+        {
+            const long syscolor_mode = idm - IDM_OPTION_AUTOCOLOR;
+            if (syscolor_mode != g_syscolor_mode)
+            {
+                g_syscolor_mode = syscolor_mode;
+                WriteRegLong(TEXT("SysColorMode"), g_syscolor_mode);
+                SendMessage(m_hwnd, WM_THEMECHANGED, 0, 0);
             }
         }
         break;

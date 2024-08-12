@@ -256,14 +256,28 @@ bool ShouldUseDarkMode()
     return _ShouldAppsUseDarkMode() && !IsHighContrast();
 }
 
-bool DarkModeOnThemeChanged(HWND hWnd)
+bool DarkModeOnThemeChanged(HWND hWnd, DarkModeMode dmm)
 {
     if (!s_darkModeSupported)
         return false;
 
-    bool const fDark = _AllowDarkModeForWindow(hWnd, ShouldUseDarkMode());
+    const bool fUseDark = ((dmm == DarkModeMode::Light) ? false :
+                           (dmm == DarkModeMode::Dark) ? true :
+                           ShouldUseDarkMode());
+
+    // HACK:  In Elucidisk, the first call returns false, but a second call
+    // returns true.  In another app of mine, the first call returns true.  I
+    // haven't yet been able to figure out what's different between them.
+    //
+    // BUT!  The return value doesn't seem to be related to success; even when
+    // fUseDark is true and the function returns false, it still successfully
+    // applies dark mode.
+    //const bool fDark =
+        //_AllowDarkModeForWindow(hWnd, fUseDark) ||
+        _AllowDarkModeForWindow(hWnd, fUseDark);
+
     RefreshTitleBarThemeColor(hWnd);
-    return fDark;
+    return fUseDark;
 }
 
 UINT32 GetForeColor(bool dark_mode)

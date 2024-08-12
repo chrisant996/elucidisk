@@ -46,6 +46,13 @@ BEGIN
         MENUITEM "Use Only Dirs Data",      IDM_OPTION_ONLYDIRS
         MENUITEM "Use Oklab Color Space",   IDM_OPTION_OKLAB
 #endif
+        MENUITEM SEPARATOR
+        POPUP "Color Mode"
+        BEGIN
+            MENUITEM "Let Windows Choose",  IDM_OPTION_AUTOCOLOR
+            MENUITEM "Light Mode",          IDM_OPTION_LIGHTMODE
+            MENUITEM "Dark Mode",           IDM_OPTION_DARKMODE
+        END
     END
 END
 

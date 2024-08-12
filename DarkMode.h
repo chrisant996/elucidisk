@@ -10,6 +10,13 @@ enum class PreferredAppMode
     Max
 };
 
+enum class DarkModeMode
+{
+    Auto,
+    Light,
+    Dark,
+};
+
 // Initializes dark mode if possible, and returns whether it was successful.
 bool AllowDarkMode();
 bool IsDarkModeSupported();
@@ -21,7 +28,7 @@ bool ShouldUseDarkMode();
 bool IsHighContrast();
 bool IsColorSchemeChangeMessage(LPARAM lParam);
 bool IsColorSchemeChangeMessage(UINT message, LPARAM lParam);
-bool DarkModeOnThemeChanged(HWND hWnd);
+bool DarkModeOnThemeChanged(HWND hWnd, DarkModeMode dmm=DarkModeMode::Auto);
 
 UINT32 GetForeColor(bool dark_mode);
 UINT32 GetBackColor(bool dark_mode);

@@ -430,8 +430,7 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.5f), &m_spFileLineBrush));
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spFillBrush));
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000, 1.0f), &m_spOutlineBrush));
-    if (dark_mode)
-        ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFFFFF, 1.0f), &m_spOutlineBrush2));
+    ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFFFFF, 1.0f), &m_spOutlineBrush2));
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spTextBrush));
 
     const auto rstyle = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND);
