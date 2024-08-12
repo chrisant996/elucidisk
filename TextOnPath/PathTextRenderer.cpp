@@ -130,8 +130,15 @@ HRESULT PathTextRenderer::DrawGlyphRun(
         UINT numGlyphsInCluster = 0;
         UINT i = firstGlyphIdx;
         FLOAT clusterWidth = 0;
+// BEGIN_CHANGE
+#if 0
         while (glyphRunDescription->clusterMap[i] == glyphRunDescription->clusterMap[firstGlyphIdx] &&
             i < glyphRun->glyphCount)
+#else
+        while (i < glyphRun->glyphCount &&
+            glyphRunDescription->clusterMap[i] == glyphRunDescription->clusterMap[firstGlyphIdx])
+#endif
+// END_CHANGE
         {
             clusterWidth += glyphRun->glyphAdvances[i];
             i++;
