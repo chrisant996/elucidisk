@@ -6,6 +6,7 @@
 #include "scan.h"
 #include "ui.h"
 #include "sunburst.h"
+#include "DarkMode.h"
 #include <stdlib.h>
 #include <shellapi.h>
 
@@ -53,6 +54,8 @@ int PASCAL WinMain(
     InitCommonControlsEx(&icce);
     InitializeD2D();
     InitializeDWrite();
+
+    AllowDarkMode();
 
     g_use_compressed_size = !!ReadRegLong(TEXT("UseCompressedSize"), false);
     g_show_free_space = !!ReadRegLong(TEXT("ShowFreeSpace"), true);

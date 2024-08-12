@@ -9,6 +9,7 @@
 #include "ui.h"
 #include "sunburst.h"
 #include "dontscan.h"
+#include "DarkMode.h"
 #include "res.h"
 #include "version.h"
 #include <windowsx.h>
@@ -728,6 +729,7 @@ public:
     void                    OnMouseMessage(UINT msg, const POINT* pt);
     void                    OnCancelMode();
     void                    SuppressDescriptionTemporarily(UINT id);
+    void                    UseDarkMode(bool dark) { m_dark_mode = dark; }
 
 #ifdef DEBUG
     bool                    GetButtonRect(UINT id, RECT& rect);
@@ -746,6 +748,7 @@ private:
     int                     m_suppress_desc = -1;
     DpiScaler               m_dpi;
     DpiScaler               m_dpiWithTextScaling;
+    bool                    m_dark_mode = false;
 };
 
 void Buttons::Attach(HWND hwnd)
@@ -796,6 +799,9 @@ void Buttons::ShowButton(const UINT id, const bool show)
 
 void Buttons::RenderButtons(DirectHwndRenderTarget& target)
 {
+    auto oldColor = target.TextBrush()->GetColor();
+    target.TextBrush()->SetColor(D2D1::ColorF(GetForeColor(m_dark_mode)));
+
     for (size_t ii = 0; ii < m_buttons.size(); ++ii)
     {
         auto& button = m_buttons[ii];
@@ -811,12 +817,12 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
 
         const bool pressed = (m_hover == ii && m_pressed == ii);
 
-        target.FillBrush()->SetColor(D2D1::ColorF(pressed ? D2D1::ColorF::LightSteelBlue : D2D1::ColorF::White));
+        target.FillBrush()->SetColor(D2D1::ColorF(pressed ? (m_dark_mode ? 0x505050 : D2D1::ColorF::LightSteelBlue) : GetBackColor(m_dark_mode)));
         target.Target()->FillRectangle(rectF, target.FillBrush());
 
         const FLOAT stroke = std::max<FLOAT>(FLOAT(m_dpi.Scale(1)), FLOAT(1));
         inset_rect_for_stroke(rectF, stroke);
-        target.FillBrush()->SetColor(D2D1::ColorF((pressed || m_hover == ii) ? D2D1::ColorF::Black : 0xD0D0D0));
+        target.FillBrush()->SetColor(D2D1::ColorF((pressed || m_hover == ii) ? GetForeColor(m_dark_mode) : (m_dark_mode ? 0x303030 : 0xD0D0D0)));
         target.Target()->DrawRectangle(rectF, target.FillBrush(), stroke);
 
         if (!button.m_spGeometry && button.m_make_icon)
@@ -824,14 +830,16 @@ void Buttons::RenderButtons(DirectHwndRenderTarget& target)
         if (button.m_spGeometry)
         {
             if (button.m_stroke > 0.0f)
-                target.Target()->DrawGeometry(button.m_spGeometry, target.LineBrush(), button.m_stroke, target.RoundedStrokeStyle());
+                target.Target()->DrawGeometry(button.m_spGeometry, target.TextBrush(), button.m_stroke, target.RoundedStrokeStyle());
             else
-                target.Target()->FillGeometry(button.m_spGeometry, target.LineBrush());
+                target.Target()->FillGeometry(button.m_spGeometry, target.TextBrush());
         }
 
         if (!button.m_caption.empty())
             target.WriteText(target.TextFormat(), 0.0f, 0.0f, rectF, button.m_caption, WTO_HCENTER|WTO_VCENTER);
     }
+
+    target.TextBrush()->SetColor(oldColor);
 }
 
 const WCHAR* Buttons::GetHoverDescription()
@@ -1032,6 +1040,8 @@ private:
 
     std::shared_ptr<Node>   m_hover_node;
     bool                    m_hover_free = false;
+
+    bool                    m_dark_mode = false;
 
     MainWindow(const MainWindow&) = delete;
     const MainWindow& operator=(const MainWindow&) = delete;
@@ -1314,6 +1324,9 @@ void MainWindow::EnumDrives()
 
 void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const std::shared_ptr<Node>& node, const bool is_free)
 {
+    auto oldColor = t.TextBrush()->GetColor();
+    t.TextBrush()->SetColor(D2D1::ColorF(GetForeColor(m_dark_mode)));
+
     // Determine top line text.
 
     bool bold = false;
@@ -1497,6 +1510,8 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
             rectLine.top += t.FontSize();
         }
     }
+
+    t.TextBrush()->SetColor(oldColor);
 }
 
 void MainWindow::DrawAppInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect)
@@ -1525,16 +1540,18 @@ void MainWindow::DrawAppInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect)
     rect.right -= padding;
     rect.bottom -= padding;
 
-    text = TEXT("Elucidisk github repo");
     auto oldColor = t.TextBrush()->GetColor();
-    t.TextBrush()->SetColor(D2D1::ColorF(0x3333ff));
+    t.TextBrush()->SetColor(D2D1::ColorF(m_dark_mode ? 0x6699ff : 0x3333ff));
+
+    text = TEXT("Elucidisk github repo");
     t.WriteText(t.AppInfoTextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS|WTO_UNDERLINE);
     m_web_link_rect.left = LONG(t.LastTextPosition().x);
     m_web_link_rect.top = LONG(t.LastTextPosition().y);
     m_web_link_rect.right = LONG(rect.right);
     m_web_link_rect.bottom = LONG(rect.bottom);
-    t.TextBrush()->SetColor(oldColor);
     rect.bottom -= t.LastTextSize().height;
+
+    t.TextBrush()->SetColor(D2D1::ColorF(GetForeColor(m_dark_mode)));
 
     text = TEXT("by Christopher Antos");
     t.WriteText(t.AppInfoTextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
@@ -1549,6 +1566,8 @@ void MainWindow::DrawAppInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect)
     swprintf_s(sz, _countof(sz), TEXT("Version %u.%u"), VERSION_MAJOR, VERSION_MINOR);
     t.WriteText(t.AppInfoTextFormat(), 0.0f, 0.0f, rect, sz, wcslen(sz), WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS);
     rect.bottom -= t.LastTextSize().height;
+
+    t.TextBrush()->SetColor(oldColor);
 }
 
 LRESULT CALLBACK MainWindow::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -1601,7 +1620,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
             m_buttons.ShowButton(IDM_UP, m_roots.size() == 1 && (m_roots[0]->GetParent() || m_original_roots.size() > 1));
             m_buttons.ShowButton(IDM_BACK, m_back_current > 0);
 
-            if (SUCCEEDED(m_directRender.CreateDeviceResources(m_hwnd, m_dpi)))
+            if (SUCCEEDED(m_directRender.CreateDeviceResources(m_hwnd, m_dpi, m_dark_mode)))
             {
                 ID2D1RenderTarget* const pTarget = m_directRender.Target();
                 pTarget->AddRef();
@@ -1609,8 +1628,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 pTarget->BeginDraw();
 
                 pTarget->SetTransform(D2D1::Matrix3x2F::Identity());
-// TODO: Dark theme.
-                pTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
+                pTarget->Clear(D2D1::ColorF(GetBackColor(m_dark_mode)));
 
                 const D2D1_SIZE_U rtSize = pTarget->GetPixelSize();
                 const D2D1_RECT_F rectClient = D2D1::RectF(FLOAT(rcClient.left), FLOAT(rcClient.top), FLOAT(rcClient.right), FLOAT(rcClient.bottom));
@@ -1631,6 +1649,7 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
                 {
                     std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
 
+                    sunburst.UseDarkMode(m_dark_mode);
                     sunburst.OnDpiChanged(m_dpi);
                     sunburst.SetBounds(bounds, FLOAT(m_max_extent));
 
@@ -1980,11 +1999,27 @@ LShowTotal:
             const DpiScaler dpi(m_dpi);
             OnDpiChanged(dpi);
         }
+        if (IsDarkModeSupported() && IsColorSchemeChangeMessage(lParam))
+            SendMessage(m_hwnd, WM_THEMECHANGED, 0, 0);
+        goto LDefault;
+
+     case WM_THEMECHANGED:
+        m_dark_mode = DarkModeOnThemeChanged(m_hwnd);
+        m_buttons.UseDarkMode(m_dark_mode);
+        m_sunburst.UseDarkMode(m_dark_mode);
+        m_directRender.ReleaseDeviceResources();
+        UpdateWindow(m_hwnd);
         goto LDefault;
 
     case WM_CREATE:
         SendMessage(m_hwnd, WM_SETICON, true, LPARAM(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 0, 0, 0)));
         SendMessage(m_hwnd, WM_SETICON, false, LPARAM(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 16, 16, 0)));
+        if (IsDarkModeSupported())
+        {
+// TODO: Why does the first one opt out of dark mode?
+            PostMessage(m_hwnd, WM_THEMECHANGED, 0, 0);
+            PostMessage(m_hwnd, WM_THEMECHANGED, 0, 0);
+        }
         goto LDefault;
 
     default:

@@ -4,6 +4,7 @@
 #include "main.h"
 #include "sunburst.h"
 #include "data.h"
+#include "DarkMode.h"
 #include "TextOnPath/PathTextRenderer.h"
 #include <cmath>
 
@@ -406,7 +407,7 @@ COLORREF Oklab::to_rgb() const
 #define ERRJMP(expr)      do { hr = (expr); assert(SUCCEEDED(hr)); if (FAILED(hr)) goto LError; } while (false)
 #define ERRRET(expr)      do { hr = (expr); assert(SUCCEEDED(hr)); if (FAILED(hr)) return hr; } while (false)
 
-HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& size, const DpiScaler& dpi)
+HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& size, const DpiScaler& dpi, bool dark_mode)
 {
     HRESULT hr = S_OK;
 
@@ -425,9 +426,12 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
 
     m_spTarget->SetDpi(dpiF, dpiF);
 
-    ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spLineBrush));
+    ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(dark_mode ? 0x444444 : 0x000000, 1.0f), &m_spLineBrush));
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x444444, 0.5f), &m_spFileLineBrush));
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spFillBrush));
+    ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000, 1.0f), &m_spOutlineBrush));
+    if (dark_mode)
+        ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFFFFF, 1.0f), &m_spOutlineBrush2));
     ERRRET(m_spTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f), &m_spTextBrush));
 
     const auto rstyle = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND);
@@ -530,7 +534,7 @@ DirectHwndRenderTarget::~DirectHwndRenderTarget()
     assert(!m_hwnd);
 }
 
-HRESULT DirectHwndRenderTarget::CreateDeviceResources(const HWND hwnd, const DpiScaler& dpi)
+HRESULT DirectHwndRenderTarget::CreateDeviceResources(const HWND hwnd, const DpiScaler& dpi, bool dark_mode)
 {
     assert(!m_hwnd || hwnd == m_hwnd);
 
@@ -546,7 +550,7 @@ HRESULT DirectHwndRenderTarget::CreateDeviceResources(const HWND hwnd, const Dpi
     GetClientRect(m_hwnd, &rc);
     const D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
 
-    HRESULT hr = m_resources->Init(m_hwnd, size, dpi);
+    HRESULT hr = m_resources->Init(m_hwnd, size, dpi, dark_mode);
     if (FAILED(hr))
     {
         ReleaseDeviceResources();
@@ -1127,7 +1131,7 @@ inline BYTE blend(BYTE a, BYTE b, FLOAT ratio)
 D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
 {
     if (arc.m_node->AsFreeSpace())
-        return D2D1::ColorF(highlight ? D2D1::ColorF::LightSteelBlue : D2D1::ColorF::WhiteSmoke);
+        return D2D1::ColorF(highlight ? D2D1::ColorF::LightSteelBlue : (m_dark_mode ? 0xdddddd : D2D1::ColorF::WhiteSmoke));
 
     DirNode* dir = arc.m_node->AsDir();
     FileNode* file = arc.m_node->AsFile();
@@ -1210,9 +1214,19 @@ D2D1_COLOR_F Sunburst::MakeColor(const Arc& arc, size_t depth, bool highlight)
 D2D1_COLOR_F Sunburst::MakeRootColor(bool highlight, bool free)
 {
     if (highlight)
-        return D2D1::ColorF(free ? 0xD0E4FE : D2D1::ColorF::LightSteelBlue);
+    {
+        if (m_dark_mode)
+            return D2D1::ColorF(free ? 0x94ADD4 : 0x728AB8);//0x839FD4);
+        else
+            return D2D1::ColorF(free ? 0xD0E4FE : 0xB0C4DE);
+    }
     else
-        return D2D1::ColorF(free ? 0xD8D8D8 : 0xB0B0B0);
+    {
+        if (m_dark_mode)
+            return D2D1::ColorF(free ? 0xFFFFFF : 0xD0D0D0, 0.66f);
+        else
+            return D2D1::ColorF(free ? 0xB1B1B1 : 0x616161, 0.5f);  // (free ? 0xD8D8D8 : 0xB0B0B0, 1.0f)
+    }
 }
 
 inline D2D1_ARC_SIZE GetArcSize(FLOAT start, FLOAT end)
@@ -1351,7 +1365,7 @@ int Sunburst::DrawArcTextInternal(DirectHwndRenderTarget& target, IDWriteFactory
     spSink->Close();
 
     PathTextDrawingContext context;
-    context.brush.Set(target.LineBrush());
+    context.brush.Set(target.TextBrush());
     context.geometry.Set(spGeometry);
     context.d2DContext.Set(target.Context());
 
@@ -1457,10 +1471,24 @@ void Sunburst::RenderRings(DirectHwndRenderTarget& target, const SunburstMetrics
 
             target.FillBrush()->SetColor(MakeColor(highlightInfo.m_arc, 0, true));
             target.Target()->FillGeometry(spCompBar, target.FillBrush());
-            target.Target()->DrawGeometry(spCompBar, target.LineBrush(), mx.stroke * 0.66f, target.BevelStrokeStyle());
+            target.Target()->DrawGeometry(spCompBar, target.OutlineBrush(), mx.stroke * 0.66f, target.BevelStrokeStyle());
         }
 
-        target.Target()->DrawGeometry(highlightInfo.m_geometry, target.LineBrush(), mx.stroke * 2.5f, target.BevelStrokeStyle());
+        if (target.OutlineBrush2())
+        {
+            target.Target()->DrawGeometry(highlightInfo.m_geometry, target.OutlineBrush2(), mx.stroke * 3.5f, target.RoundedStrokeStyle());
+
+            if (highlightInfo.m_arc.m_node)
+            {
+                target.FillBrush()->SetColor(MakeColor(highlightInfo.m_arc, highlightInfo.m_depth, true));
+                target.Target()->FillGeometry(highlightInfo.m_geometry, target.FillBrush());
+                target.Target()->DrawGeometry(highlightInfo.m_geometry, target.LineBrush(), mx.stroke);
+                if (highlightInfo.m_show_names)
+                    DrawArcText(target, highlightInfo.m_arc, highlightInfo.m_arctext_radius);
+            }
+        }
+
+        target.Target()->DrawGeometry(highlightInfo.m_geometry, target.OutlineBrush(), mx.stroke * 2.5f, target.BevelStrokeStyle());
     }
 }
 
@@ -1634,6 +1662,9 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
                 {
                     highlightInfo.m_arc = arc;
                     highlightInfo.m_geometry.Set(spGeometry);
+                    highlightInfo.m_depth = depth;
+                    highlightInfo.m_arctext_radius = arctext_radius;
+                    highlightInfo.m_show_names = show_names;
                 }
             }
         }
@@ -1662,7 +1693,7 @@ void Sunburst::RenderRingsInternal(DirectHwndRenderTarget& target, const Sunburs
                 pFillBrush->SetColor(D2D1::ColorF(isFile ? 0x999999 : 0x555555));
                 pTarget->FillGeometry(spGeometry, pFillBrush);
 
-                pFillBrush->SetColor(D2D1::ColorF(D2D1::ColorF::White));
+                pFillBrush->SetColor(D2D1::ColorF(GetBackColor(m_dark_mode)));
                 pTarget->DrawGeometry(spGeometry, pFillBrush, mx.stroke / 2);
             }
         }

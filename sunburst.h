@@ -57,7 +57,7 @@ class DirectHwndRenderTarget
 {
     struct Resources
     {
-        HRESULT                     Init(HWND hwnd, const D2D1_SIZE_U& size, const DpiScaler& dpi);
+        HRESULT                     Init(HWND hwnd, const D2D1_SIZE_U& size, const DpiScaler& dpi, bool dark_mode);
 
         SPI<ID2D1Factory>           m_spFactory;
         SPI<IDWriteFactory2>        m_spDWriteFactory;
@@ -68,6 +68,8 @@ class DirectHwndRenderTarget
         SPI<ID2D1SolidColorBrush>   m_spLineBrush;
         SPI<ID2D1SolidColorBrush>   m_spFileLineBrush;
         SPI<ID2D1SolidColorBrush>   m_spFillBrush;
+        SPI<ID2D1SolidColorBrush>   m_spOutlineBrush;
+        SPI<ID2D1SolidColorBrush>   m_spOutlineBrush2;
         SPI<ID2D1SolidColorBrush>   m_spTextBrush;
 
         SPI<ID2D1StrokeStyle>       m_spRoundedStroke;
@@ -93,7 +95,7 @@ public:
                             DirectHwndRenderTarget();
                             ~DirectHwndRenderTarget();
 
-    HRESULT                 CreateDeviceResources(HWND hwnd, const DpiScaler& dpi);
+    HRESULT                 CreateDeviceResources(HWND hwnd, const DpiScaler& dpi, bool dark_mode);
     HRESULT                 ResizeDeviceResources();
     void                    ReleaseDeviceResources();
 
@@ -104,6 +106,8 @@ public:
     ID2D1SolidColorBrush*   LineBrush() const { return m_resources->m_spLineBrush; }
     ID2D1SolidColorBrush*   FileLineBrush() const { return m_resources->m_spFileLineBrush; }
     ID2D1SolidColorBrush*   FillBrush() const { return m_resources->m_spFillBrush; }
+    ID2D1SolidColorBrush*   OutlineBrush() const { return m_resources->m_spOutlineBrush; }
+    ID2D1SolidColorBrush*   OutlineBrush2() const { return m_resources->m_spOutlineBrush2; }
     ID2D1SolidColorBrush*   TextBrush() const { return m_resources->m_spTextBrush; }
 
     ID2D1StrokeStyle*       RoundedStrokeStyle() const { return m_resources->m_spRoundedStroke; }
@@ -170,6 +174,9 @@ class Sunburst
     {
         Arc                 m_arc;
         SPI<ID2D1Geometry>  m_geometry;
+        size_t              m_depth;
+        FLOAT               m_arctext_radius;
+        bool                m_show_names;
     };
 
 public:
@@ -177,6 +184,7 @@ public:
                             ~Sunburst();
 
     bool                    OnDpiChanged(const DpiScaler& dpi);
+    void                    UseDarkMode(bool dark) { m_dark_mode = dark; }
     bool                    SetBounds(const D2D1_RECT_F& rect, FLOAT max_extent);
     void                    BuildRings(const SunburstMetrics& mx, const std::vector<std::shared_ptr<DirNode>>& roots);
     void                    RenderRings(DirectHwndRenderTarget& target, const SunburstMetrics& mx, const std::shared_ptr<Node>& highlight);
@@ -184,8 +192,8 @@ public:
     std::shared_ptr<Node>   HitTest(const SunburstMetrics& mx, POINT pt, bool* is_free=nullptr);
 
 protected:
-    static D2D1_COLOR_F     MakeColor(const Arc& arc, size_t depth, bool highlight);
-    static D2D1_COLOR_F     MakeRootColor(bool highlight, bool free);
+    D2D1_COLOR_F            MakeColor(const Arc& arc, size_t depth, bool highlight);
+    D2D1_COLOR_F            MakeRootColor(bool highlight, bool free);
     static void             MakeArc(std::vector<Arc>& arcs, FLOAT outer_radius, FLOAT min_arc, const std::shared_ptr<Node>& node, ULONGLONG size, double& sweep, double total, float start, float span, double convert=1.0f);
     std::vector<Arc>        NextRing(const std::vector<Arc>& parent_ring, FLOAT outer_radius, FLOAT min_arc);
     void                    AddArcToSink(ID2D1GeometrySink* pSink, bool counter_clockwise, FLOAT start, FLOAT end, const D2D1_POINT_2F& end_point, FLOAT radius);
@@ -204,6 +212,7 @@ private:
     D2D1_RECT_F             m_bounds = D2D1::RectF();
     D2D1_POINT_2F           m_center = D2D1::Point2F();
     UnitScale               m_units = UnitScale::MB;
+    bool                    m_dark_mode = false;
 
     std::vector<std::shared_ptr<DirNode>> m_roots;
     std::vector<std::vector<Arc>> m_rings;
