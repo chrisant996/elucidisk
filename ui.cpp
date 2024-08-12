@@ -1042,6 +1042,7 @@ private:
     bool                    m_hover_free = false;
 
     bool                    m_dark_mode = false;
+    bool                    m_ever_painted = false;
 
     MainWindow(const MainWindow&) = delete;
     const MainWindow& operator=(const MainWindow&) = delete;
@@ -1614,10 +1615,18 @@ LRESULT MainWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
     switch (msg)
     {
     case WM_ERASEBKGND:
+        if (!m_ever_painted && IsDarkModeSupported() && ShouldUseDarkMode())
+        {
+            RECT rcClient;
+            GetClientRect(m_hwnd, &rcClient);
+            FillRect(HDC(wParam), &rcClient, GetStockBrush(BLACK_BRUSH));
+        }
         return true;
 
     case WM_PAINT:
         {
+            m_ever_painted = true;
+
             PAINTSTRUCT ps;
             BeginPaint(m_hwnd, &ps);
             SaveDC(ps.hdc);
