@@ -1393,7 +1393,7 @@ void Sunburst::DrawArcText(DirectHwndRenderTarget& target, const Arc& arc, FLOAT
     text.append(TEXT(" "));
 #ifdef SHOW_ARC_LENGTH
     WCHAR xx[1024];
-    swprintf_s(xx, L"%u", UINT32(ArcLength(arc.m_end - arc.m_start, radius)));
+    swprintf_s(xx, TEXT("%u"), UINT32(ArcLength(arc.m_end - arc.m_start, radius)));
     text.append(xx);
 #else
     text.append(arc.m_node->GetName());

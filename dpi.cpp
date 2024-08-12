@@ -362,12 +362,12 @@ static float GetTextScaleFactor()
         // It's stored in the registry as the factor times 100 here:
         // Software\\Microsoft\\Accessibility\\TextScaleFactor
         SHKEY shkey;
-        if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\Microsoft\\Accessibility", 0, KEY_READ, &shkey) == ERROR_SUCCESS)
+        if (RegOpenKeyEx(HKEY_CURRENT_USER, TEXT("Software\\Microsoft\\Accessibility"), 0, KEY_READ, &shkey) == ERROR_SUCCESS)
         {
             DWORD dwType;
             DWORD dwValue;
             DWORD dwSize = sizeof(dwValue);
-            if (RegQueryValueEx(shkey, L"TextScaleFactor", 0, &dwType, LPBYTE(&dwValue), &dwSize) == ERROR_SUCCESS &&
+            if (RegQueryValueEx(shkey, TEXT("TextScaleFactor"), 0, &dwType, LPBYTE(&dwValue), &dwSize) == ERROR_SUCCESS &&
                 REG_DWORD == dwType &&
                 sizeof(dwValue) == dwSize)
             {
