@@ -1073,15 +1073,16 @@ HWND MainWindow::Create()
     static bool s_registered = false;
     if (!s_registered)
     {
-        WNDCLASS wc = { 0 };
+        WNDCLASSEX wc = { sizeof(wc) };
         wc.style = CS_HREDRAW|CS_VREDRAW|CS_DBLCLKS;
         wc.lpfnWndProc = StaticWndProc;
         wc.hInstance = m_hinst;
-        wc.hIcon = HICON(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 0, 0, 0));
+        wc.hIcon = LoadIcon(m_hinst, MAKEINTRESOURCE(IDI_MAIN));
+        wc.hIconSm = LoadIcon(m_hinst, MAKEINTRESOURCE(IDI_MAIN));
         wc.hCursor = LoadCursor(0, IDC_ARROW);
         wc.hbrBackground = HBRUSH(COLOR_WINDOW + 1 );
         wc.lpszClassName = c_class;
-        RegisterClass(&wc);
+        RegisterClassEx(&wc);
         s_registered = true;
     }
 
@@ -2023,8 +2024,6 @@ LShowTotal:
         goto LDefault;
 
     case WM_CREATE:
-        SendMessage(m_hwnd, WM_SETICON, true, LPARAM(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 0, 0, 0)));
-        SendMessage(m_hwnd, WM_SETICON, false, LPARAM(LoadImage(m_hinst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 16, 16, 0)));
         if (IsDarkModeSupported())
         {
 // TODO: Why does the first one opt out of dark mode?
