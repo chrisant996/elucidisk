@@ -1473,7 +1473,7 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
             m_sunburst.FormatSize(bytes, text, units);
 
             if (node->IsSparse() || node->IsCompressed())
-                t.TextBrush()->SetColor(D2D1::ColorF(0x0033ff));
+                t.TextBrush()->SetColor(D2D1::ColorF(m_dark_mode ? 0x3388ff : 0x0033ff));
 
             rectNumber = rectLine;
             rectNumber.right = FLOAT(m_cxNumberArea);
@@ -1484,6 +1484,16 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
                 units.append(TEXT(" sparse"));
             else if (node->IsCompressed())
                 units.append(TEXT(" compressed"));
+            else if (!g_show_free_space && node->AsDrive() && node->AsDrive()->GetFreeSpace())
+            {
+                std::wstring freetext, freeunits;
+                m_sunburst.FormatSize(node->AsDrive()->GetFreeSpace()->GetFreeSize(), freetext, freeunits);
+                units.append(TEXT("    ("));
+                units.append(freetext);
+                units.append(TEXT(" "));
+                units.append(freeunits);
+                units.append(TEXT(" Free)"));
+            }
             t.WriteText(t.TextFormat(), rectLine.left + m_cxNumberArea + padding, rectLine.top, rectLine, units);
 
             if (node->IsSparse() || node->IsCompressed())
@@ -1542,7 +1552,7 @@ void MainWindow::DrawAppInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect)
     rect.bottom -= padding;
 
     auto oldColor = t.TextBrush()->GetColor();
-    t.TextBrush()->SetColor(D2D1::ColorF(m_dark_mode ? 0x6699ff : 0x3333ff));
+    t.TextBrush()->SetColor(D2D1::ColorF(m_dark_mode ? 0x3388ff : 0x3333ff));
 
     text = TEXT("Elucidisk github repo");
     t.WriteText(t.AppInfoTextFormat(), 0.0f, 0.0f, rect, text, WTO_RIGHT_ALIGN|WTO_BOTTOM_ALIGN|WTO_REMEMBER_METRICS|WTO_UNDERLINE);
