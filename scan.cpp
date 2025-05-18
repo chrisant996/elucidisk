@@ -24,11 +24,18 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
     std::wstring path;
     if (!_path)
     {
-        WCHAR sz[1024];
-        const DWORD dw = GetCurrentDirectory(_countof(sz), sz);
-
-        if (dw > 0 && dw < _countof(sz))
-            get_drive(sz, path);
+        const DWORD needed = GetCurrentDirectory(0, nullptr);
+        if (needed)
+        {
+            WCHAR* buffer = new WCHAR[needed];
+            if (buffer)
+            {
+                const DWORD used = GetCurrentDirectory(needed, buffer);
+                if (used > 0 && used < needed)
+                    get_drive(buffer, path);
+                delete [] buffer;
+            }
+        }
         if (path.empty())
             path = TEXT(".");
     }
