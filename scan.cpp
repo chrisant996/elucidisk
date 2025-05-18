@@ -14,9 +14,28 @@ static void get_drive(const WCHAR* path, std::wstring& out)
 
     if (path[0] && path[1] == ':' && unsigned(towlower(path[0]) - 'a') <= ('z' - 'a'))
     {
-        WCHAR tmp[3] = { path[0], ':' };
+        WCHAR tmp[3] = { towupper(path[0]), ':' };
         out = tmp;
     }
+}
+
+static void capitalize_drive_part(std::wstring& inout)
+{
+    std::wstring out;
+    const WCHAR* path = inout.c_str();
+
+    unsigned int pfxlen = has_io_prefix(path);
+    out.append(path, pfxlen);
+    path += pfxlen;
+
+    std::wstring drive;
+    get_drive(path, drive);
+    out.append(drive.c_str());
+    path += drive.length();
+
+    out.append(path);
+
+    inout = std::move(out);
 }
 
 std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
@@ -71,20 +90,13 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
         return nullptr;
 
     ensure_separator(path);
+    capitalize_drive_part(path);
 
     std::shared_ptr<DirNode> root;
     if (is_drive(path.c_str()))
-    {
-        WCHAR sz[MAX_PATH];
-        wcscpy_s(sz, _countof(sz), path.c_str());
-        _wcsupr_s(sz, _countof(sz)); // Returns nullptr, contrary to reference docs.
-        path = sz;
         root = std::make_shared<DriveNode>(path.c_str());
-    }
     else
-    {
         root = std::make_shared<DirNode>(path.c_str());
-    }
 
     return root;
 }
