@@ -90,6 +90,23 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
         return nullptr;
 
     ensure_separator(path);
+
+    const DWORD needed = GetFullPathName(path.c_str(), 0, nullptr, nullptr);
+    if (needed)
+    {
+        WCHAR* buffer = new WCHAR[needed];
+        if (buffer)
+        {
+            const DWORD used = GetFullPathName(path.c_str(), needed, buffer, nullptr);
+            if (used > 0 && used < needed)
+            {
+                path = buffer;
+                ensure_separator(path);
+            }
+            delete [] buffer;
+        }
+    }
+
     capitalize_drive_part(path);
 
     std::shared_ptr<DirNode> root;
