@@ -49,8 +49,24 @@ std::shared_ptr<DirNode> MakeRoot(const WCHAR* _path)
 
     // Everyone knows about "*" and "?" wildcards.  But Windows actually
     // supports FIVE wildcards!
+    //
     // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
     // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtldoesnamecontainwildcards
+    //
+    // The ntifs.h header file shows the definitions of DOS_DOT, DOS_QM, and
+    // DOS_STAR.
+    //
+    // Here is the full table of wildcards:
+    //  asterisk        *   Matches zero or more characters.
+    //  question mark   ?   Matches a single character.
+    //  DOS_DOT         <   Matches either a period or zero characters beyond
+    //                      the name string.
+    //  DOS_QM          >   Matches any single character or, upon encountering
+    //                      a period or end of name string, advances the
+    //                      expression to the end of the set of contiguous
+    //                      DOS_QMs ('>' characters).
+    //  DOS_STAR        "   Matches zero or more characters until encountering
+    //                      and matching the final . in the name.
     if (wcspbrk(path.c_str(), TEXT("*?<>\"")))
         return nullptr;
 
