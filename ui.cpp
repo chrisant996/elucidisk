@@ -2481,6 +2481,16 @@ void MainWindow::DeleteNode(const std::shared_ptr<Node>& node)
     if (!node)
         return;
 
+    std::shared_ptr<Node> drive;
+    for (std::shared_ptr<Node> n = node; n; n = n->GetParent())
+    {
+        if (n->AsDrive() && n->AsDrive()->GetFreeSpace())
+        {
+            drive = n;
+            break;
+        }
+    }
+
     const std::shared_ptr<Node> parent = node->GetParent();
     assert(parent);
     if (!parent || !parent->AsDir())
@@ -2489,6 +2499,8 @@ void MainWindow::DeleteNode(const std::shared_ptr<Node>& node)
     {
         std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
         parent->AsDir()->DeleteChild(node);
+        if (drive)
+            drive->AsDrive()->AddFreeSpace();
     }
 
     InvalidateRect(m_hwnd, nullptr, false);

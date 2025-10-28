@@ -4,7 +4,7 @@
 #pragma once
 
 #define VERSION_MAJOR           1
-#define VERSION_MINOR           4
+#define VERSION_MINOR           5
 
 #define COPYRIGHT_STR           "Copyright (C) 2023-2025 Christopher Antos"
 
