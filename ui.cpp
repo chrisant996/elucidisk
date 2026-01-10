@@ -1005,6 +1005,8 @@ protected:
     void                    Refresh(bool all=false);
     void                    Rescan(const std::shared_ptr<DirNode>& dir);
 
+    void                    SetFrameProgress(bool working);
+
     static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 private:
@@ -1043,6 +1045,8 @@ private:
 
     bool                    m_dark_mode = false;
     bool                    m_ever_painted = false;
+
+    SPI<ITaskbarList3>      m_spTaskbarList;
 
     MainWindow(const MainWindow&) = delete;
     const MainWindow& operator=(const MainWindow&) = delete;
@@ -1106,6 +1110,8 @@ HWND MainWindow::Create()
 
 void MainWindow::Scan(int argc, const WCHAR** argv, bool rescan)
 {
+    SetFrameProgress(true);
+
     SetRoots(m_scanner.Start(argc, argv));
     if (!rescan)
         m_original_roots = m_roots;
@@ -1279,10 +1285,24 @@ void MainWindow::Rescan(const std::shared_ptr<DirNode>& dir)
         dir->SetCompressed(compressed);
     }
 
+    SetFrameProgress(true);
+
     m_scanner.Start(dir);
 
     SetTimer(m_hwnd, TIMER_PROGRESS, INTERVAL_PROGRESS, nullptr);
     InvalidateRect(m_hwnd, nullptr, false);
+}
+
+void MainWindow::SetFrameProgress(bool working)
+{
+    if (working && !m_spTaskbarList)
+    {
+        CoCreateInstance(CLSID_TaskbarList, 0, CLSCTX_INPROC_SERVER, IID_ITaskbarList3, (void**)&m_spTaskbarList);
+        if (m_spTaskbarList && FAILED(m_spTaskbarList->HrInit()))
+            m_spTaskbarList.Release();
+    }
+    if (m_spTaskbarList)
+        m_spTaskbarList->SetProgressState(m_hwnd, working ? TBPF_INDETERMINATE : TBPF_NOPROGRESS);
 }
 
 void MainWindow::EnumDrives()
@@ -1844,7 +1864,10 @@ LShowTotal:
         if (wParam == TIMER_PROGRESS)
         {
             if (m_scanner.IsComplete())
+            {
                 KillTimer(m_hwnd, wParam);
+                SetFrameProgress(false);
+            }
             InvalidateRect(m_hwnd, nullptr, false);
         }
         break;
