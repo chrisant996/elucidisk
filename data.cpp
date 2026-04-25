@@ -276,10 +276,31 @@ ULONGLONG DirNode::GetEffectiveSize() const
         return std::max<ULONGLONG>(GetFreeSpace()->GetUsedSize(), GetSize());
 }
 
+void DirNode::SetContainsReparsePoint()
+{
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
+
+        if (m_contains_reparse_point)
+            return;
+
+        m_contains_reparse_point = true;
+
+        std::shared_ptr<DirNode> parent(m_parent.lock());
+        while (parent)
+        {
+            if (parent->m_contains_reparse_point)
+                break;
+            parent->m_contains_reparse_point = true;
+            parent = parent->m_parent.lock();
+        }
+    }
+}
+
 std::shared_ptr<DirNode> DirNode::AddDir(const WCHAR* name)
 {
-    std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
-    std::shared_ptr<DirNode> dir = std::make_shared<DirNode>(name, parent);
+    std::shared_ptr<DirNode> self(std::static_pointer_cast<DirNode>(shared_from_this()));
+    std::shared_ptr<DirNode> dir = std::make_shared<DirNode>(name, self);
 
     {
         std::lock_guard<std::recursive_mutex> lock(m_node_mutex);
@@ -301,8 +322,8 @@ std::shared_ptr<DirNode> DirNode::AddDir(const WCHAR* name)
 
 std::shared_ptr<FileNode> DirNode::AddFile(const WCHAR* name, ULONGLONG size)
 {
-    std::shared_ptr<DirNode> parent(std::static_pointer_cast<DirNode>(shared_from_this()));
-    std::shared_ptr<FileNode> file = std::make_shared<FileNode>(name, size, parent);
+    std::shared_ptr<DirNode> self(std::static_pointer_cast<DirNode>(shared_from_this()));
+    std::shared_ptr<FileNode> file = std::make_shared<FileNode>(name, size, self);
 
     {
         std::lock_guard<std::recursive_mutex> lock(m_node_mutex);

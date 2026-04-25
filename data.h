@@ -81,6 +81,8 @@ public:
     ULONGLONG               GetEffectiveSize() const;
     void                    Hide(bool hide=true) { m_hide = hide; }
     bool                    IsHidden() const { return m_hide; }
+    void                    SetContainsReparsePoint();
+    bool                    ContainsReparsePoint() const { return m_contains_reparse_point; }
     std::shared_ptr<DirNode> AddDir(const WCHAR* name);
     std::shared_ptr<FileNode> AddFile(const WCHAR* name, ULONGLONG size);
     void                    DeleteChild(const std::shared_ptr<Node>& node);
@@ -96,6 +98,7 @@ private:
     ULONGLONG               m_count_dirs = 0;
     ULONGLONG               m_count_files = 0;
     ULONGLONG               m_size = 0;
+    bool                    m_contains_reparse_point = false;
     bool                    m_finished = false;
     bool                    m_hide = false;
 };

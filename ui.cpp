@@ -1524,7 +1524,8 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
 
         rectLine.top += t.FontSize();
 
-        if (node->AsDir() && !show_free && !node->AsDir()->IsRecycleBin())
+        const DirNode* asdir = node->AsDir();
+        if (asdir && !show_free && !node->AsDir()->IsRecycleBin())
         {
             FormatCount(node->AsDir()->CountFiles(), text);
             rectNumber = rectLine;
@@ -1541,6 +1542,21 @@ void MainWindow::DrawNodeInfo(DirectHwndRenderTarget& t, D2D1_RECT_F rect, const
             text = TEXT("Dirs");
             t.WriteText(t.TextFormat(), rectLine.left + m_cxNumberArea + padding, rectLine.top, rectLine, text);
             rectLine.top += t.FontSize();
+
+            if (asdir->ContainsReparsePoint())
+            {
+                text = TEXT("(excludes symlinks)");
+
+                FLOAT x = FLOAT(m_dpi.Scale(8));
+                D2D1_SIZE_F symlinksSize;
+                if (m_directRender.MeasureText(t.ItalicTextFormat(), rectLine, text, symlinksSize))
+                    x = std::max<FLOAT>(x, rectLine.left + (m_cxNumberArea * 0.75f) - (symlinksSize.width / 2));
+
+                rectLine.top += padding;
+                t.TextBrush()->SetColor(D2D1::ColorF(m_dark_mode ? 0x808080 : 0xA0A0A0));
+                t.WriteText(t.ItalicTextFormat(), x, rectLine.top, rectLine, text);
+                t.TextBrush()->SetColor(oldColor);
+            }
         }
     }
 

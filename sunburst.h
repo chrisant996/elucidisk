@@ -76,9 +76,11 @@ class DirectHwndRenderTarget
         SPI<ID2D1StrokeStyle>       m_spBevelStroke;
 
         SPI<IDWriteTextFormat>      m_spTextFormat;
+        SPI<IDWriteTextFormat>      m_spItalicTextFormat;
         SPI<IDWriteTextFormat>      m_spHeaderTextFormat;
         SPI<IDWriteTextFormat>      m_spAppInfoTextFormat;
         FLOAT                       m_fontSize = 0.0f;
+        FLOAT                       m_italicFontSize = 0.0f;
         FLOAT                       m_headerFontSize = 0.0f;
         FLOAT                       m_appInfoFontSize = 0.0f;
 
@@ -114,6 +116,7 @@ public:
     ID2D1StrokeStyle*       BevelStrokeStyle() const { return m_resources->m_spBevelStroke; }
 
     IDWriteTextFormat*      TextFormat() const { return m_resources->m_spTextFormat; }
+    IDWriteTextFormat*      ItalicTextFormat() const { return m_resources->m_spItalicTextFormat; }
     FLOAT                   FontSize() const { return m_resources->m_fontSize; }
     IDWriteTextFormat*      HeaderTextFormat() const { return m_resources->m_spHeaderTextFormat; }
     FLOAT                   HeaderFontSize() const { return m_resources->m_headerFontSize; }

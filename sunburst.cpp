@@ -35,6 +35,7 @@ constexpr int c_retrograde_depths = 10;
 
 constexpr WCHAR c_fontface[] = TEXT("Segoe UI");
 constexpr FLOAT c_fontsize = 10.0f;
+constexpr FLOAT c_italicfontsize = 8.0f;
 constexpr FLOAT c_headerfontsize = 12.0f;
 constexpr FLOAT c_arcfontsize = 8.0f;
 constexpr FLOAT c_minArc = 2.5f;
@@ -474,6 +475,18 @@ HRESULT DirectHwndRenderTarget::Resources::Init(HWND hwnd, const D2D1_SIZE_U& si
             TEXT("en-US"),
             &m_spTextFormat));
     m_spTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+
+    m_italicFontSize = FLOAT(-dpiWithTextScaling.PointSizeToHeight(c_italicfontsize));
+    ERRRET(m_spDWriteFactory->CreateTextFormat(
+            c_fontface,
+            nullptr,
+            DWRITE_FONT_WEIGHT_REGULAR,
+            DWRITE_FONT_STYLE_ITALIC,
+            DWRITE_FONT_STRETCH_NORMAL,
+            m_italicFontSize,
+            TEXT("en-US"),
+            &m_spItalicTextFormat));
+    m_spItalicTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
 
     m_headerFontSize = FLOAT(-dpiWithTextScaling.PointSizeToHeight(c_headerfontsize));
     ERRRET(m_spDWriteFactory->CreateTextFormat(
