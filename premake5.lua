@@ -368,10 +368,12 @@ newaction {
         mkdir(target_dir)
 
         -- Package the release and the pdbs separately.
-        os.chdir(src .. "/x64")
         if have_7z then
+            os.chdir(src .. "/x64")
             --exec(have_7z .. " a -r  " .. target_dir .. "elucidisk-v" .. version .. "-symbols.zip  *.pdb")
             exec(have_7z .. " a -r  " .. target_dir .. "elucidisk-v" .. version .. ".zip  *.exe")
+            os.chdir(code_dir)
+            exec(have_7z .. " a  " .. target_dir .. "elucidisk-v" .. version .. ".zip  RegistryFiles/*.reg")
         end
 
         -- Tidy up code directory.
