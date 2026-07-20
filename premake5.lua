@@ -83,8 +83,11 @@ define_exe("elucidisk", "windowedapp")
 local any_warnings_or_failures = nil
 local msbuild_locations = {
     "c:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\MSBuild\\Current\\Bin",
+    "c:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin",
     "c:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\MSBuild\\Current\\Bin",
+    "c:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\MSBuild\\Current\\Bin",
     "c:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\MSBuild\\Current\\Bin",
+    "c:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Professional\\MSBuild\\Current\\Bin",
 }
 
 --------------------------------------------------------------------------------
