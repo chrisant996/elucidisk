@@ -52,6 +52,36 @@ So, I wrote my own.
 
 It is written in C++ and uses DirectX for rendering.
 
+## Command-line arguments
+
+Elucidisk can be started from command-line, to scan a certain **drive** or **folder** by passing the
+relevant path as an (optional) argument:
+
+    elucidisk [path-to-drive-or-folder]
+
+## File Explorer integration
+
+Included in the repo (and in recent release archives) is a folder `RegistryFiles`,
+containing a couple of *Windows Registry* (`.reg`) files:
+
+* [Add_Elucidisk_to_File_Explorer_context_menu.reg](RegistryFiles/Add_Elucidisk_to_File_Explorer_context_menu.reg)
+* [Remove_Elucidisk_from_File_Explorer_context_menu.reg](RegistryFiles/Remove_Elucidisk_from_File_Explorer_context_menu.reg)
+
+These files can be used to add / remove the following two *context-menu* entries
+in **Windows File Explorer**:
+
+* **Scan drive with Elucidisk**
+* **Scan folder with Elucidisk**
+
+To add these two *context-menu* entries, perform the following steps:
+1. Right-click the file `Add_Elucidisk_to_File_Explorer_context_menu.reg` and choose **Edit**.
+1. Inspect the file contents and make sure the 4 paths specifying `elucidisk.exe` are matching the location of where you installed Elucidisk on your PC (the preset path is `C:\Program Files\Elucidisk\elucidisk.exe`).
+1. (Optionally, rename the titles of these two *context-menu* entries to your liking.)
+1. Save the changes you made (if any).
+1. Finally, "merge" this `.reg` file into the registry, by double-clicking it (or by right-clicking it and choosing `Merge`).
+
+To remove the same context menu entries, simply merge the file `Remove_Elucidisk_from_File_Explorer_context_menu.reg` into the registry (there's no need to edit paths this file).
+
 ## Building Elucidisk
 
 Elucidisk uses [Premake](http://premake.github.io) to generate Visual Studio solutions. Note that Premake >= 5.0.0-beta8 is required.
