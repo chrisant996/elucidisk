@@ -1,0 +1,15 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\Drive\shell\Elucidisk]
+@="Scan drive with Elucidisk"
+"Icon"="C:\\Program Files\\Elucidisk\\elucidisk.exe"
+
+[HKEY_CLASSES_ROOT\Drive\shell\Elucidisk\command]
+@="C:\\Program Files\\Elucidisk\\elucidisk.exe \"%1\""
+
+[HKEY_CLASSES_ROOT\Directory\shell\Elucidisk]
+@="Scan folder with Elucidisk"
+"Icon"="C:\\Program Files\\Elucidisk\\elucidisk.exe"
+
+[HKEY_CLASSES_ROOT\Directory\shell\Elucidisk\command]
+@="C:\\Program Files\\Elucidisk\\elucidisk.exe \"%1\""

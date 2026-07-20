@@ -1,0 +1,7 @@
+Windows Registry Editor Version 5.00
+
+[-HKEY_CLASSES_ROOT\Drive\shell\Elucidisk]
+[-HKEY_CLASSES_ROOT\Drive\shell\Elucidisk\command]
+
+[-HKEY_CLASSES_ROOT\Directory\shell\Elucidisk]
+[-HKEY_CLASSES_ROOT\Directory\shell\Elucidisk\command]
