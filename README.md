@@ -27,21 +27,28 @@ The name "Elucidisk" is a portmanteau of "elucidate" and "disk".
 - Right click on an arc for a context menu of available actions.
 - Right click elsewhere for a context menu of configurable options (or press <kbd>Shift</kbd>-<kbd>F10</kbd> or <kbd>Apps</kbd> key).
 
-Please feel free to [open 
-issues](https://github.com/chrisant996/elucidisk/issues) for suggestions, 
+Please feel free to [open
+issues](https://github.com/chrisant996/elucidisk/issues) for suggestions,
 problem reports, or other feedback.
 
-If you want to contribute, fork the repo and create a topic branch, and send a 
-pull request for your topic branch.  Also, consider opening an issue first and 
+If you want to contribute, fork the repo and create a topic branch, and send a
+pull request for your topic branch.  Also, consider opening an issue first and
 discussing the contribution you want to make.
+
+## Command line syntax
+
+Run `elucidisk` to launch the program and scan the current drive.
+
+You can optionally pass one or more drives or directories to scan as command
+line arguments (e.g. `elucidisk d: "c:\Program Files" c:\Windows`).
 
 ## Why was it created?
 
-When viewing a sunburst chart of disk space usage, I want the free space on a 
-disk to show up in the chart.  The only sunburst disk space visualizer I could 
+When viewing a sunburst chart of disk space usage, I want the free space on a
+disk to show up in the chart.  The only sunburst disk space visualizer I could
 find that includes the free space is Scanner.
 
-I also wanted a few improvements to the user interface, such as highlighting 
+I also wanted a few improvements to the user interface, such as highlighting
 the arc under the mouse pointer and showing names of directories/files when
 the name fits in the arc.
 
