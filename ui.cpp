@@ -9,6 +9,7 @@
 #include "ui.h"
 #include "sunburst.h"
 #include "dontscan.h"
+#include "shellintegration.h"
 #include "DarkMode.h"
 #include "res.h"
 #include "version.h"
@@ -2207,6 +2208,8 @@ void MainWindow::ContextMenu(const POINT& ptScreen, const std::shared_ptr<Node>&
         CheckMenuItem(hmenuSub, IDM_OPTION_SCANDONTSCAN, MF_BYCOMMAND|MF_CHECKED);
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_PLAIN, IDM_OPTION_HEATMAP, IDM_OPTION_PLAIN + g_color_mode, MF_BYCOMMAND|MF_CHECKED);
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_AUTOCOLOR, IDM_OPTION_DARKMODE, IDM_OPTION_AUTOCOLOR + g_syscolor_mode, MF_BYCOMMAND|MF_CHECKED);
+    CheckMenuRadioItem(hmenuSub, IDM_OPTION_UNREGISTER, IDM_OPTION_REGISTER, IDM_OPTION_UNREGISTER + IsShellIntegrationRegistered(), MF_BYCOMMAND|MF_CHECKED);
+
 #ifdef DEBUG
     CheckMenuRadioItem(hmenuSub, IDM_OPTION_REALDATA, IDM_OPTION_ONLYDIRS, IDM_OPTION_REALDATA + g_fake_data, MF_BYCOMMAND|MF_CHECKED);
     if (GetUseOklab())
@@ -2339,6 +2342,29 @@ LAskRescan:
                 g_color_mode = color_mode;
                 WriteRegLong(TEXT("ColorMode"), g_color_mode);
                 InvalidateRect(m_hwnd, nullptr, false);
+            }
+        }
+        break;
+
+    case IDM_OPTION_REGISTER:
+    case IDM_OPTION_UNREGISTER:
+        {
+            const LONG result = ((idm == IDM_OPTION_REGISTER) ?
+                                 RegisterShellIntegration() :
+                                 UnregisterShellIntegration());
+            if (result)
+            {
+                WCHAR sz[2048];
+                DWORD const dwFlags = FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS;
+                DWORD cch = FormatMessage(dwFlags, 0, result, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), sz, _countof(sz), 0);
+                if (!cch)
+                {
+                    if (result < 65536)
+                        swprintf_s(sz, _countof(sz), TEXT("Error %u."), result);
+                    else
+                        swprintf_s(sz, _countof(sz), TEXT("Error 0x%08X."), result);
+                }
+                MessageBox(m_hwnd, sz, TEXT("Elucidisk"), MB_OK|MB_ICONERROR);
             }
         }
         break;

@@ -34,9 +34,6 @@ BEGIN
         MENUITEM "Show &Compressed Sizes",  IDM_OPTION_COMPRESSED
         MENUITEM "Show Proportional &Area", IDM_OPTION_PROPORTION
         MENUITEM "Show Size Comparison &Bar", IDM_OPTION_COMPBAR
-        MENUITEM SEPARATOR
-        MENUITEM "Do Not Scan These Directories...", IDM_OPTION_DONTSCAN
-        MENUITEM "    ...But Scan Them Anyway", IDM_OPTION_SCANDONTSCAN
 #ifdef DEBUG
         MENUITEM SEPARATOR
         MENUITEM "Use Real Data",           IDM_OPTION_REALDATA
@@ -46,6 +43,15 @@ BEGIN
         MENUITEM "Use Only Dirs Data",      IDM_OPTION_ONLYDIRS
         MENUITEM "Use Oklab Color Space",   IDM_OPTION_OKLAB
 #endif
+        MENUITEM SEPARATOR
+        MENUITEM "Do Not Scan These Directories...", IDM_OPTION_DONTSCAN
+        MENUITEM "    ...But Scan Them Anyway", IDM_OPTION_SCANDONTSCAN
+        MENUITEM SEPARATOR
+        POPUP "File Explorer Integration"
+        BEGIN
+            MENUITEM "Register Context Menu Commands", IDM_OPTION_REGISTER
+            MENUITEM "Unregister Context Menu Commands", IDM_OPTION_UNREGISTER
+        END
         MENUITEM SEPARATOR
         POPUP "Color Mode"
         BEGIN

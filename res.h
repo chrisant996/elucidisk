@@ -38,6 +38,9 @@
 #define IDM_OPTION_DONTSCAN     2105
 #define IDM_OPTION_SCANDONTSCAN 2106
 
+#define IDM_OPTION_UNREGISTER   2150    // Order matters:  0 = not registered.
+#define IDM_OPTION_REGISTER     2151    // Order matters:  1 = registered.
+
 #define IDM_OPTION_AUTOCOLOR    2160
 #define IDM_OPTION_LIGHTMODE    2161
 #define IDM_OPTION_DARKMODE     2162
