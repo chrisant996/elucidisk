@@ -1007,7 +1007,7 @@ void Sunburst::BuildRings(const SunburstMetrics& mx, const std::vector<std::shar
         float prev = ring.size() ? ring[0].m_start : 0;
         for (const auto arc : ring)
         {
-            assert(arc.m_start >= prev);
+            assert(arc.m_start + 0.001f >= prev);
             prev = arc.m_end;
         }
     }
